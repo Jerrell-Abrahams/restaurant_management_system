@@ -1,0 +1,26 @@
+{
+  "name": "restaurant_management_system",
+  "version": "1.0.0",
+  "description": "QR menu + diner feedback for restaurants. Billing and auth ride on subscription_management_system.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "node --test",
+    "smoke": "node scripts/smoke.js",
+    "seed": "node scripts/seed.js"
+  },
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.110.1",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.5.2",
+    "resend": "^6.17.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}

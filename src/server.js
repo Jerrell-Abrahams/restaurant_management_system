@@ -6,6 +6,7 @@ const rateLimit = require('express-rate-limit');
 const adminRoutes = require('./routes/admin');
 const publicRoutes = require('./routes/public');
 const cronRoutes = require('./routes/cron');
+const platformRoutes = require('./routes/platform');
 
 const app = express();
 
@@ -56,6 +57,11 @@ app.use('/api/public', rateLimit({ windowMs: 60 * 1000, limit: 40 }));
 // fire reliably. Vercel Cron hits this route instead (see vercel.json), guarded by CRON_SECRET
 // which Vercel sends automatically as a bearer token. Mounted before the catch-all below.
 app.use('/api/cron', cronRoutes);
+
+// Server-to-server calls from subscription_management_system's admin. No staff-session auth --
+// see src/routes/platform.js's own header for why it lives outside /api/admin.
+app.use('/api/platform', rateLimit({ windowMs: 60 * 1000, limit: 30 }));
+app.use('/api/platform', platformRoutes);
 
 // ponytail: no host routing. Both api. and qr. resolve to this app, so a menu is reachable at
 // either hostname -- harmless, since the same page is public at both and only qr. is ever printed

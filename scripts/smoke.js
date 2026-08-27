@@ -87,6 +87,62 @@ const api = (token) => async (method, path, body) => {
   r = await call('POST', '/api/admin/restaurants', { name: 'Dupe', slug });
   check('duplicate slug is 409', r.status === 409, `got ${r.status}`);
 
+  console.log('\n== platform provisioning ==');
+  const provisionSecret = process.env.PROVISION_SECRET;
+  let provisionUserId;
+  if (!provisionSecret) {
+    console.log('  SKIP  provisioning checks (PROVISION_SECRET not set)');
+  } else {
+    const platformCall = async (headers, body) => {
+      const res = await fetch(BASE + '/api/platform/provision', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify(body),
+      });
+      const text = await res.text();
+      let json;
+      try { json = JSON.parse(text); } catch { json = text; }
+      return { status: res.status, body: json };
+    };
+    const provisionSlug = 'smoke-test-provision';
+    const provisionEmail = `smoke-provision-${Date.now()}@example.com`;
+    // Leftovers from a previous aborted run would trip both the slug index and (via the auth
+    // user it created) a re-run's email uniqueness -- the email is timestamped precisely to
+    // sidestep the latter, but the slug is fixed and needs its own sweep.
+    await db.from('restaurants').delete().eq('slug', provisionSlug);
+    // Subject to change per run since subscriptionId is the idempotency key under test below --
+    // a real subscriptions.id from the OTHER project would also work, but this endpoint never
+    // reads it as anything but an opaque string, so a random one keeps this test self-contained.
+    const subscriptionId = crypto.randomUUID();
+    const payload = {
+      subscriptionId, email: provisionEmail, password: 'smoke-test-password-1', fullName: 'Smoke Owner',
+      restaurantName: 'Smoke Test Provision', slug: provisionSlug,
+    };
+
+    let pr = await platformCall({}, payload);
+    check('no secret is rejected', pr.status === 401, `got ${pr.status}`);
+
+    pr = await platformCall({ 'x-provision-secret': 'wrong' }, payload);
+    check('wrong secret is rejected', pr.status === 401, `got ${pr.status}`);
+
+    pr = await platformCall({ 'x-provision-secret': provisionSecret }, payload);
+    check('provision creates the restaurant', pr.status === 201, `got ${pr.status} ${JSON.stringify(pr.body).slice(0, 120)}`);
+    const provisionedId = pr.body.id;
+    provisionUserId = pr.body.owner_user_id;
+    check('owner login was created', !!provisionUserId);
+    check('qr_target_url is present', typeof pr.body.qr_target_url === 'string' && pr.body.qr_target_url.includes(provisionSlug));
+
+    // The retry a failed caller would send: same subscriptionId, same everything. Must return
+    // the SAME restaurant rather than a second one or a duplicate-email error.
+    pr = await platformCall({ 'x-provision-secret': provisionSecret }, payload);
+    check('retry with the same subscriptionId is idempotent', pr.status === 200 && pr.body.id === provisionedId, `got ${pr.status}`);
+
+    const { data: ownerLogin } = await db.from('restaurants').select('owner_user_id').eq('id', provisionedId).single();
+    check('restaurant row points at the created login', ownerLogin?.owner_user_id === provisionUserId);
+
+    await db.from('restaurants').delete().eq('id', provisionedId);
+  }
+
   r = await call('POST', `/api/admin/restaurants/${restaurantId}/categories`, { name: 'Starters', position: 0 });
   const catStarters = r.body.id;
   check('create category', r.status === 201, `got ${r.status}`);
@@ -307,6 +363,14 @@ const api = (token) => async (method, path, body) => {
   }
 
   console.log('\n== cleanup ==');
+  if (provisionUserId) {
+    // staff cascades from auth.users on delete, but deleting it explicitly first means a
+    // failure here still leaves a readable trail instead of an orphaned staff row hidden
+    // behind a successful-looking auth deletion.
+    await db.from('staff').delete().eq('user_id', provisionUserId);
+    const { error: authDelErr } = await admin.auth.admin.deleteUser(provisionUserId);
+    check('provisioned login removed', !authDelErr, authDelErr?.message || '');
+  }
   const { error: delErr } = await db.from('restaurants').delete().eq('id', restaurantId);
   const { data: left } = await db.from('restaurants').select('id').eq('slug', slug);
   check('test data removed', !delErr && left.length === 0);

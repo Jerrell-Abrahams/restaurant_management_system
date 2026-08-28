@@ -35,7 +35,7 @@ const MIME = {
  * a misconfigured dev box is not.
  */
 function targetUrl(slug) {
-  const base = (process.env.PUBLIC_BASE_URL || 'https://qr.complexai.co.za').replace(/\/+$/, '');
+  const base = (process.env.PUBLIC_BASE_URL || 'https://menu.complexai.co.za').replace(/\/+$/, '');
   return `${base}/${slug}`;
 }
 

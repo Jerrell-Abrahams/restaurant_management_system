@@ -1,4 +1,4 @@
-// The slug is the whole public identity of a restaurant: qr.complexai.co.za/<slug> is what gets
+// The slug is the whole public identity of a restaurant: menu.complexai.co.za/<slug> is what gets
 // printed onto paper coasters that then sit on tables for years. Two consequences drive this file.
 //
 // 1. It must survive a printer, a phone camera and someone typing it off a coaster by hand, so the

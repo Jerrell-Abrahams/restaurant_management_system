@@ -55,7 +55,7 @@ root API from its `admin/` SPA.
 
 | Surface | Domain |
 |---|---|
-| API + diner pages | `api.complexai.co.za`, `qr.complexai.co.za` |
+| API + diner pages | `api.complexai.co.za`, `menu.complexai.co.za` |
 | Owner console | `res.complexai.co.za` |
 
 ## Setup
@@ -120,7 +120,7 @@ Diner surface (unauthenticated):
 
 ### The slug is immutable
 
-`qr.complexai.co.za/<slug>` is printed onto physical coasters that sit on tables for years.
+`menu.complexai.co.za/<slug>` is printed onto physical coasters that sit on tables for years.
 No route updates it — not even for an admin. Renaming a restaurant must never break a
 thousand coasters. A restaurant that genuinely needs a new slug needs a new print run.
 

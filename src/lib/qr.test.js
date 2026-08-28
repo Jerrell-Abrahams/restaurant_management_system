@@ -98,7 +98,7 @@ test('a trailing slash does not become a double slash', () => {
 test('falls back to the production host, never to localhost', () => {
   withBase(undefined, () => {
     const url = targetUrl('marios');
-    assert.strictEqual(url, 'https://qr.complexai.co.za/marios');
+    assert.strictEqual(url, 'https://menu.complexai.co.za/marios');
     assert.ok(!url.includes('localhost'));
   });
 });

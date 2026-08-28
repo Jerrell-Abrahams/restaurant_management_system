@@ -1,7 +1,7 @@
 import { cn } from './cn';
 
 export function Card({ className, ...props }) {
-  return <div className={cn('rounded-lg border border-border bg-panel p-4', className)} {...props} />;
+  return <div className={cn('rounded-lg border border-border bg-panel p-4 shadow-[var(--shadow)]', className)} {...props} />;
 }
 
 // Header strip with the hairline the design puts under every card title. Separate from
@@ -17,7 +17,7 @@ export function CardHeader({ className, ...props }) {
 }
 
 export function CardTitle({ className, ...props }) {
-  return <h3 className={cn('text-[13.5px] font-semibold text-text', className)} {...props} />;
+  return <h3 className={cn('font-serif text-[16px] font-semibold text-text', className)} {...props} />;
 }
 
 // Mono uppercase micro-label: section headings, KPI labels, stat-strip labels.

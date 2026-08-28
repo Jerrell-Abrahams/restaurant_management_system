@@ -76,6 +76,8 @@ html{scroll-behavior:smooth}
 [hidden]{display:none}
 body{margin:0;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;
   font-family:var(--sans);font-weight:300;padding-bottom:112px}
+/* Extra footer height for the service-request row -- only paid by restaurants that have it on. */
+body[data-service]{padding-bottom:172px}
 header{position:sticky;top:0;z-index:6;background:var(--header-bg);
   -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
   border-bottom:1px solid var(--hair);padding:18px 24px 0}
@@ -168,6 +170,19 @@ footer{position:fixed;left:0;right:0;bottom:0;z-index:7;padding:16px 24px 26px;
   border:1px solid var(--cta-border);background:var(--cta-bg);color:var(--cta-ink);
   font:inherit;font-size:12px;letter-spacing:.22em;text-transform:uppercase;cursor:pointer}
 .visit-cta::after{content:"\\2192";letter-spacing:0;color:var(--cta-arrow)}
+/* Quieter than .visit-cta on purpose -- an outline pill, not a filled one. Equal weight with the
+   feedback CTA would hijack the page's primary purpose. Also reachable from the burger sheet
+   below (same data-kind, same handlers) as a second, less prominent path -- not a replacement:
+   burying it there alone would make "Request bill" undiscoverable on first visit. */
+.service-row{pointer-events:auto;display:flex;gap:8px;margin-bottom:10px}
+.service-btn{flex:1;height:48px;border-radius:999px;border:1px solid var(--border-strong);
+  background:var(--raised);color:var(--text);font:inherit;font-size:11px;letter-spacing:.16em;
+  text-transform:uppercase;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  transition:transform .16s var(--ease),opacity .2s var(--ease),background .2s var(--ease)}
+.service-btn:active{transform:scale(.96)}
+/* Covers both the footer pill and the sheet row below -- one request can be triggered from
+   either place, and both must grey out together while it's cooling down or sending. */
+[data-kind][disabled]{opacity:.55;cursor:default;pointer-events:none}
 .overlay{position:fixed;inset:0;z-index:20;background:var(--bg);padding:26px 24px 34px;
   display:flex;flex-direction:column;justify-content:center;overflow-y:auto}
 .overlay h2{margin:0;font-family:var(--serif);font-size:34px;font-weight:500;line-height:1.15;
@@ -424,6 +439,12 @@ function renderPage({ restaurant, menu }) {
   // gap under it. Filtered once here so the chips and the sections cannot disagree about indices.
   const cats = menu.filter((c) => c.items.length);
 
+  // Off by default (src/db/service_requests.sql) -- when off, not one byte of the buttons, the
+  // table-number prompt or their CSS/script wiring ships. renderPage's signature stays exactly
+  // { restaurant, menu } either way; this reads off the restaurant row already in scope, the same
+  // one dinerPage.test.js pins to prove no rating can ever reach this function.
+  const serviceEnabled = !!restaurant.service_requests_enabled;
+
   const sections = cats
     .map(
       (c, i) => `<section data-cat="${i}">
@@ -479,7 +500,8 @@ function renderPage({ restaurant, menu }) {
 </head>
 <body data-slug="${esc(restaurant.slug)}"
       data-hours="${esc(JSON.stringify(restaurant.hours || null))}"
-      data-closed-note="${esc(restaurant.closed_note || '')}">
+      data-closed-note="${esc(restaurant.closed_note || '')}"
+      ${serviceEnabled ? 'data-service' : ''}>
 <header>
   <div class="head-row">
     <h1>${esc(restaurant.name)}</h1>
@@ -495,8 +517,34 @@ ${sections || '<p class="empty">This menu is being set up.</p>'}
 <p class="empty" id="no-hits" hidden>Nothing on the menu matches that.</p>
 
 <footer>
+  ${
+    serviceEnabled
+      ? `<div class="service-row">
+    <button class="service-btn" type="button" data-kind="waiter"><span class="label">Call waiter</span></button>
+    <button class="service-btn" type="button" data-kind="bill"><span class="label">Request bill</span></button>
+  </div>`
+      : ''
+  }
   <button class="visit-cta" type="button" id="open-visit">How was your visit?</button>
 </footer>
+
+${
+  // Reuses the .overlay pattern below rather than a bespoke prompt: it is already themed for both
+  // palettes and already handles [hidden] + @starting-style + reduced motion, and a second
+  // full-screen mechanism for one text field would not earn its keep.
+  serviceEnabled
+    ? `<div class="overlay" id="table-ask" hidden role="dialog" aria-modal="true" aria-labelledby="table-h">
+  <button class="close" type="button" id="close-table" aria-label="Close">✕</button>
+  <div>
+    <h2 id="table-h">Which table are you at?</h2>
+    <p>So the right table gets served. We only ask once a visit.</p>
+    <input class="field" id="table-input" type="text" inputmode="numeric" maxlength="12"
+           autocomplete="off" placeholder="12" aria-label="Table number">
+    <button class="btn" type="button" id="table-go" disabled>Send</button>
+  </div>
+</div>`
+    : ''
+}
 
 <div class="overlay" id="visit" hidden role="dialog" aria-modal="true" aria-labelledby="visit-h">
   <button class="close" type="button" id="close-visit" aria-label="Close">✕</button>
@@ -556,6 +604,16 @@ ${sections || '<p class="empty">This menu is being set up.</p>'}
       <button class="sheet-row" type="button" id="share-menu">
         <span>Share Menu</span><span class="chev">›</span>
       </button>
+      ${
+        serviceEnabled
+          ? `<button class="sheet-row" type="button" data-kind="waiter">
+        <span class="label">Call waiter</span><span class="chev">›</span>
+      </button>
+      <button class="sheet-row" type="button" data-kind="bill">
+        <span class="label">Request bill</span><span class="chev">›</span>
+      </button>`
+          : ''
+      }
     </nav>
     <p class="copied" id="share-copied" hidden>Link copied</p>
   </div>
@@ -756,6 +814,91 @@ ${
       });
     }
   };
+
+  // Call waiter / Request bill. Reachable from two places -- the footer pill and, if the sheet has
+  // it, the burger sheet row -- sharing one data-kind attribute so both stay in sync. serviceBtns
+  // is empty when the restaurant has this off, and every handler below is scoped inside the length
+  // check, so the whole block is a no-op rather than throwing on elements it would expect to find.
+  var serviceBtns = document.querySelectorAll('[data-kind]');
+  if(serviceBtns.length){
+    var tableAsk = document.getElementById('table-ask');
+    var tableInput = document.getElementById('table-input');
+    var tableGo = document.getElementById('table-go');
+    var tableKey = 'rt:' + slug;
+    // 4h, matching the visit cookie's TTL in routes/public.js, for the same reason: long enough
+    // for a leisurely meal, short enough that tomorrow's diner on a shared family phone does not
+    // inherit last night's table.
+    var TABLE_TTL = 4 * 60 * 60 * 1000;
+    var pendingKind = null;
+    var LABELS = { waiter: 'Call waiter', bill: 'Request bill' };
+
+    // Safari in private mode throws on a localStorage READ as well as a write, so both are
+    // wrapped. Losing the memory just means asking again -- annoying, never broken.
+    function rememberedTable(){
+      try {
+        var r = JSON.parse(localStorage.getItem(tableKey) || 'null');
+        return (r && Date.now() - r.t < TABLE_TTL) ? r.v : null;
+      } catch(e){ return null; }
+    }
+    function rememberTable(v){
+      try { localStorage.setItem(tableKey, JSON.stringify({ v: v, t: Date.now() })); } catch(e){}
+    }
+
+    // Every element sharing this data-kind -- the footer pill and the sheet row are the same
+    // request wearing two hats, and both must show the same label/disabled state at once.
+    function ofKind(kind){ return document.querySelectorAll('[data-kind="' + kind + '"]'); }
+    function setLabel(el, text){ (el.querySelector('.label') || el).textContent = text; }
+
+    // NOT optimistic, unlike the item ratings above. A rating that silently failed costs a data
+    // point; a bill request that silently failed leaves someone waiting for a waiter who was
+    // never called, and they will blame the restaurant for it, not a dropped packet.
+    function send(kind, table){
+      var els = ofKind(kind);
+      els.forEach(function(el){ el.disabled = true; });
+      post('/service-request', { kind: kind, table: table }).then(function(res){
+        if(!res.ok) throw new Error();
+        var sent = kind === 'bill' ? 'Bill requested ✓' : 'Waiter called ✓';
+        els.forEach(function(el){ setLabel(el, sent); });
+        // The cooldown is UX, not the guard -- the dedupe index in service_requests.sql is what
+        // actually protects the display. This just stops the buttons reading as unanswered.
+        setTimeout(function(){
+          els.forEach(function(el){ setLabel(el, LABELS[kind]); el.disabled = false; });
+        }, 90000);
+      }).catch(function(){
+        els.forEach(function(el){ setLabel(el, 'Could not send — tap to retry'); el.disabled = false; });
+      });
+    }
+
+    serviceBtns.forEach(function(btn){
+      btn.onclick = function(){
+        // One overlay at a time, same rule as Hours & Address below: a tap from the sheet closes
+        // it first, whether that leads straight to sending or to the table prompt opening on top.
+        sheet.hidden = true;
+        var table = rememberedTable();
+        // The first tap of a visit can never send anything on its own -- it opens the prompt.
+        // That doubles as the mis-tap guard: a stray thumb on a fixed footer costs a dialog, not
+        // an actual waiter's walk across the room.
+        if(table) return send(btn.dataset.kind, table);
+        pendingKind = btn.dataset.kind;
+        tableAsk.hidden = false;
+        tableInput.value = '';
+        tableGo.disabled = true;
+        tableInput.focus();
+      };
+    });
+
+    tableInput.addEventListener('input', function(){
+      tableGo.disabled = !tableInput.value.trim();
+    });
+    document.getElementById('close-table').onclick = function(){ tableAsk.hidden = true; };
+    tableGo.onclick = function(){
+      var v = tableInput.value.trim().slice(0, 12);
+      if(!v) return;
+      rememberTable(v);
+      tableAsk.hidden = true;
+      send(pendingKind, v);
+    };
+  }
 
   var visit = document.getElementById('visit');
   var thanks = document.getElementById('thanks');

@@ -26,6 +26,32 @@ async function purgeContacts(now = Date.now()) {
   return (data || []).length;
 }
 
+// service_requests has a partial unique index keyed on acknowledged_at is null (see
+// src/db/service_requests.sql) -- deliberately no time filter on the console's read side, so a
+// request nobody cleared would otherwise block that table+kind from ever raising another card.
+// This is what makes that safe: 4h mirrors VISIT_TTL_MS, one sitting -- anything still open after
+// that belongs to a service that's over. Acknowledged, not deleted, so it stays counted for the
+// 30-day abuse-detection trail below.
+const SERVICE_REQUEST_STALE_MS = 4 * 3600000;
+const SERVICE_REQUEST_RETENTION_DAYS = 30;
+
+async function sweepServiceRequests(now = Date.now()) {
+  const staleCutoff = new Date(now - SERVICE_REQUEST_STALE_MS).toISOString();
+  const { data: staled } = await db
+    .from('service_requests')
+    .update({ acknowledged_at: new Date(now).toISOString() })
+    .is('acknowledged_at', null)
+    .lt('created_at', staleCutoff)
+    .select('id');
+
+  // Housekeeping, not a legal obligation -- unlike purgeContacts below, this is here to keep the
+  // table small, not because COMPLIANCE.md requires it.
+  const oldCutoff = new Date(now - SERVICE_REQUEST_RETENTION_DAYS * 86400000).toISOString();
+  await db.from('service_requests').delete().lt('created_at', oldCutoff);
+
+  return (staled || []).length;
+}
+
 // The backstop for the one case the on-submit debounce misses: a burst whose final bad rating
 // lands inside the fifteen-minute window and is never followed by another submission, so nothing
 // ever triggers the send. Calling maybeAlert here is safe and idempotent -- it debounces and
@@ -55,7 +81,7 @@ router.get('/daily', async (req, res) => {
     return res.status(401).end();
   }
 
-  const out = { swept: 0, purged: 0, warm: false };
+  const out = { swept: 0, purged: 0, staled: 0, warm: false };
 
   if (email.configured()) {
     out.swept = await sweepAlerts().catch((err) => {
@@ -74,6 +100,14 @@ router.get('/daily', async (req, res) => {
   } catch (err) {
     console.error('[cron] POPIA purge FAILED:', err.message);
     out.purgeError = err.message;
+  }
+
+  // Independent of the two above: a failure here must not skip the retention purge, and the
+  // purge must not skip this. Nothing downstream depends on this order beyond that.
+  try {
+    out.staled = await sweepServiceRequests();
+  } catch (err) {
+    console.error('[cron] service-request sweep failed:', err.message);
   }
 
   // Keeps the Supabase free tier from pausing after seven idle days. A live restaurant's coasters

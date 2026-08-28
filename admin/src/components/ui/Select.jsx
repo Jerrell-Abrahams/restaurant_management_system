@@ -24,7 +24,7 @@ export function Select({ value, onValueChange, placeholder, children, className,
           position="popper"
           sideOffset={4}
           className={cn(
-            'z-50 overflow-hidden rounded-md border border-border bg-panel shadow-[var(--shadow)]',
+            'z-50 overflow-hidden rounded-md border border-border bg-panel shadow-[var(--lift)]',
             'origin-[var(--radix-select-content-transform-origin)]',
             'data-[state=open]:animate-menu-in data-[state=closed]:animate-menu-out'
           )}

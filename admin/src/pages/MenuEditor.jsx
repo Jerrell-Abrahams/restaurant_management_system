@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Plus, Trash2, Archive, RotateCcw } from 'lucide-react';
+import { Plus, Trash2, Archive, RotateCcw, GripVertical } from 'lucide-react';
 import { toast } from 'sonner';
 import * as api from '../api';
 import { Button, IconButton } from '../components/ui/Button';
@@ -20,12 +20,42 @@ export function MenuEditor() {
   const [catModal, setCatModal] = useState(null); // { id?, name }
   const [itemModal, setItemModal] = useState(null); // { categoryId, id?, ... }
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [dragging, setDragging] = useState(null); // { categoryId, index }
 
   const load = useCallback(() => {
     api.getMenu(restaurantId).then(setMenu).catch((err) => toast.error(err.message));
   }, [restaurantId]);
 
   useEffect(load, [load]);
+
+  // Reorders the in-memory list live as the drag crosses rows, so the UI tracks the pointer --
+  // the API write only happens once, on drop. Indices are positions within the category's full
+  // item list (not the filtered/visible one), so this stays correct with archived items hidden.
+  function reorderLocal(categoryId, from, to) {
+    if (from === to) return;
+    setMenu((cur) =>
+      cur.map((cat) => {
+        if (cat.id !== categoryId) return cat;
+        const items = cat.items.slice();
+        items.splice(to, 0, items.splice(from, 1)[0]);
+        return { ...cat, items };
+      })
+    );
+    setDragging({ categoryId, index: to });
+  }
+
+  // Writes the whole category's order in one shot once the drag ends. On failure, reload to
+  // discard the optimistic reorder rather than leaving the screen out of sync with the server.
+  async function persistOrder(categoryId) {
+    const cat = menu.find((c) => c.id === categoryId);
+    if (!cat) return;
+    try {
+      await Promise.all(cat.items.map((item, idx) => api.updateItem(restaurantId, item.id, { position: idx })));
+    } catch (err) {
+      toast.error(err.message);
+      load();
+    }
+  }
 
   const run = async (fn, msg) => {
     try {
@@ -43,8 +73,8 @@ export function MenuEditor() {
 
   return (
     <div>
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-[19px] font-semibold tracking-[-0.01em]">Menu</h1>
+      <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="font-serif text-[26px] font-medium tracking-[-0.015em]">Menu</h1>
         <div className="flex gap-2">
           <Button variant="ghost" onClick={() => setShowArchived(!showArchived)}>
             {showArchived ? 'Hide archived' : 'Show archived'}
@@ -52,6 +82,7 @@ export function MenuEditor() {
           <Button onClick={() => setCatModal({ name: '' })}><Plus size={13} /> Section</Button>
         </div>
       </div>
+      <p className="mb-5 font-mono text-[10.5px] text-dim">DRAG THE HANDLE TO REORDER · CHANGES ARE LIVE FOR DINERS</p>
 
       {menu.length === 0 && (
         <Card className="p-8 text-center text-[13px] text-muted">
@@ -61,7 +92,7 @@ export function MenuEditor() {
 
       <div className="flex flex-col gap-4">
         {menu.map((cat) => {
-          const items = cat.items.filter((i) => showArchived || !i.archived_at);
+          const visibleItems = cat.items.filter((i) => showArchived || !i.archived_at);
           return (
             <Card key={cat.id} className="p-0">
               <CardHeader>
@@ -81,17 +112,30 @@ export function MenuEditor() {
                 </div>
               </CardHeader>
 
-              {items.length === 0 ? (
+              {visibleItems.length === 0 ? (
                 <p className="px-4 py-5 text-[12.5px] text-dim">No dishes in this section.</p>
               ) : (
-                items.map((item) => (
+                cat.items.map((item, idx) => {
+                  if (!showArchived && item.archived_at) return null;
+                  return (
                   <div
                     key={item.id}
+                    draggable={!item.archived_at}
+                    onDragStart={() => setDragging({ categoryId: cat.id, index: idx })}
+                    onDragEnter={() => dragging && dragging.categoryId === cat.id && reorderLocal(cat.id, dragging.index, idx)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDragEnd={() => {
+                      const cid = dragging?.categoryId;
+                      setDragging(null);
+                      if (cid) persistOrder(cid);
+                    }}
                     className={cn(
                       'flex items-center gap-3 border-b border-border px-4 py-2.5 last:border-0',
-                      item.archived_at && 'opacity-45'
+                      item.archived_at && 'opacity-45',
+                      dragging?.categoryId === cat.id && dragging.index === idx && 'bg-raised'
                     )}
                   >
+                    <GripVertical size={14} className={cn('shrink-0 text-dim', !item.archived_at && 'cursor-grab')} />
                     <button
                       className="min-w-0 flex-1 text-left"
                       onClick={() => setItemModal({ categoryId: cat.id, id: item.id, name: item.name, description: item.description || '', price: rands(item.price_cents) })}
@@ -129,7 +173,8 @@ export function MenuEditor() {
                       {item.archived_at ? <RotateCcw size={13} /> : <Archive size={13} />}
                     </IconButton>
                   </div>
-                ))
+                  );
+                })
               )}
             </Card>
           );

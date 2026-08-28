@@ -24,7 +24,7 @@ export function Login() {
   return (
     <div className="flex min-h-screen items-center justify-center px-5">
       <form onSubmit={submit} className="w-full max-w-[340px]">
-        <h1 className="text-[19px] font-semibold tracking-[-0.01em]">Restaurant console</h1>
+        <h1 className="font-serif text-[26px] font-medium tracking-[-0.015em]">Restaurant console</h1>
         <p className="mb-6 mt-1 text-[13px] text-muted">Sign in to manage your menu and feedback.</p>
 
         <div className="flex flex-col gap-3">

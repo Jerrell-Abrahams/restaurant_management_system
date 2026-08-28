@@ -273,3 +273,48 @@ test("lib/hours.js's status() reaches the client verbatim", () => {
 test('the badge elements exist hidden by default -- only client JS un-hides them', () => {
   assert.ok(/<p class="hours-badge" id="hours-badge" hidden><\/p>/.test(withInfo));
 });
+
+// --- Call waiter / Request bill -----------------------------------------------------------
+// Off by default (restaurant.service_requests_enabled). These pin that a restaurant which has
+// never touched the setting -- the base `restaurant` fixture above has no such field -- ships not
+// one byte of this feature, same standard as the Hours & Address modal above.
+
+test('no service-request markup ships when the toggle is absent or false', () => {
+  // Not a bare `.service-btn` check -- that class name legitimately appears once in the shipped
+  // CSS regardless (same as `.chip{}` shipping for a single-category menu). What must be absent is
+  // the elements themselves.
+  assert.ok(!html.includes('data-kind="waiter"'));
+  assert.ok(!html.includes('data-kind="bill"'));
+  assert.ok(!html.includes('id="table-ask"'));
+  // Not a bare substring check: `body[data-service]{...}` in the CSS legitimately contains this
+  // text unconditionally (it's the padding-bottom override, dead weight when unused but harmless).
+  // What must be absent is the attribute actually landing on the <body> tag.
+  assert.ok(!/<body[^>]*\sdata-service(\s|>)/.test(html));
+});
+
+const withService = renderPage({ restaurant: { ...restaurant, service_requests_enabled: true }, menu });
+
+test('both buttons render when the toggle is on, and the body carries the padding hook', () => {
+  assert.ok(withService.includes('data-kind="waiter"'));
+  assert.ok(withService.includes('data-kind="bill"'));
+  assert.ok(/<body[^>]*\sdata-service(\s|>)/.test(withService));
+});
+
+test('the table-number prompt exists and starts hidden', () => {
+  assert.ok(/<div class="overlay" id="table-ask" hidden/.test(withService));
+});
+
+test('the buttons sit above the visit CTA in the footer, not inside the burger sheet', () => {
+  const footer = /<footer>([\s\S]*?)<\/footer>/.exec(withService)[1];
+  assert.ok(footer.includes('service-row'));
+  assert.ok(footer.indexOf('service-row') < footer.indexOf('id="open-visit"'));
+});
+
+test('the same two actions are also reachable from the burger sheet, after Share Menu', () => {
+  const sheet = /<div class="overlay" id="sheet"[\s\S]*?<\/nav>/.exec(withService)[0];
+  const waiterIdx = sheet.indexOf('data-kind="waiter"');
+  const billIdx = sheet.indexOf('data-kind="bill"');
+  assert.ok(waiterIdx > -1 && billIdx > -1);
+  assert.ok(sheet.indexOf('share-menu') < waiterIdx, 'Share Menu comes first');
+  assert.ok(waiterIdx < billIdx, 'Call waiter before Request bill');
+});

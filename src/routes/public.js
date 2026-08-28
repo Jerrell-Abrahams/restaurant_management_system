@@ -4,6 +4,12 @@ const { db } = require('../config/supabase');
 const { bySlug } = require('../lib/restaurants');
 const { renderPage } = require('../lib/dinerPage');
 const alerts = require('../lib/alerts');
+const { tableError, normalizeTable, isKind } = require('../lib/serviceRequests');
+
+// Postgres unique-violation. The dedupe index in service_requests.sql fires when this table
+// already has an open request of this kind -- see the route below for why that is a success, not
+// an error.
+const DUPLICATE = '23505';
 
 // Awaited, not fire-and-forget. Vercel freezes the function once the response is sent, so
 // un-awaited work here would usually never run -- and "you will know within fifteen minutes" is
@@ -196,6 +202,38 @@ router.post('/api/public/:slug/visit-rating', async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
 
   if (rating <= (ctx.restaurant.alert_threshold ?? 3)) await fireAlert(ctx.restaurant.id);
+  res.json({ ok: true });
+});
+
+// --- Service requests (Call waiter / Request bill) ----------------------------------------
+
+// Deliberately does not touch `visits` or `currentVisit()`: this is an operational ping, not
+// feedback, and must not inflate the console's visit count or averages. No alert email either --
+// the kitchen display (admin/src/pages/Display.jsx) is the whole channel for this.
+router.post('/api/public/:slug/service-request', async (req, res) => {
+  const ctx = await bySlug(req.params.slug);
+  // 404 rather than a feature-specific error when the toggle is off: the menu page is cached 60s
+  // at a shared edge (see the /:slug route above), so a phone can be holding a page whose buttons
+  // outlive the owner switching this off. Nothing distinguishes "wrong slug" from "not enabled"
+  // to a crafted request either way.
+  if (!ctx || !ctx.restaurant.service_requests_enabled) return res.status(404).json({ error: 'Not found' });
+
+  if (!isKind(req.body.kind)) return res.status(400).json({ error: 'kind must be waiter or bill' });
+  const table = normalizeTable(req.body.table);
+  const bad = tableError(table);
+  if (bad) return res.status(400).json({ error: bad });
+
+  const { error } = await db.from('service_requests').insert({
+    restaurant_id: ctx.restaurant.id,
+    table_label: table,
+    kind: req.body.kind,
+    ip_hash: hashIp(req), // COMPLIANCE.md 5: abuse detection, never displayed or exported
+  });
+
+  // The dedupe index fired: this table already has an unanswered request of this kind on the
+  // display. That is the system working as designed, and to the diner it is indistinguishable
+  // from success -- because it is; staff have already been told.
+  if (error && error.code !== DUPLICATE) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
 });
 

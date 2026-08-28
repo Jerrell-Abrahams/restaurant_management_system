@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate, useParams } from 'react-router-dom';
-import { MessageSquare, UtensilsCrossed, TrendingDown, QrCode, SlidersHorizontal, LogOut, Menu as MenuIcon, Sun, Moon, ChevronsUpDown, ExternalLink } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, UtensilsCrossed, TrendingDown, QrCode, SlidersHorizontal, LogOut, Menu as MenuIcon, Sun, Moon, ChevronsUpDown, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../lib/theme';
@@ -11,7 +11,8 @@ import { Skeleton } from './ui/Skeleton';
 import { cn } from './ui/cn';
 
 const nav = [
-  { to: '', label: 'Feedback', icon: MessageSquare, end: true },
+  { to: '', label: 'Overview', icon: LayoutDashboard, end: true },
+  { to: 'feedback', label: 'Feedback', icon: MessageSquare, badge: true },
   { to: 'menu', label: 'Menu', icon: UtensilsCrossed },
   { to: 'dishes', label: 'Dishes', icon: TrendingDown },
   { to: 'qr', label: 'QR code', icon: QrCode },
@@ -24,7 +25,15 @@ export function Layout() {
   const navigate = useNavigate();
   const [theme, toggleTheme] = useTheme();
   const [restaurant, setRestaurant] = useState(null);
+  const [summary, setSummary] = useState(null);
   const [drawer, setDrawer] = useState(false);
+
+  // Shared with Overview and Feedback via outlet context, rather than each page fetching its
+  // own copy -- one number (open issues) drives both the nav badge here and Overview's stat, and
+  // it needs to update the moment a visit is resolved from either screen.
+  const reloadSummary = useCallback(() => {
+    api.getSummary(restaurantId).then(setSummary).catch(() => {});
+  }, [restaurantId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -40,6 +49,11 @@ export function Layout() {
     };
   }, [restaurantId, navigate]);
 
+  useEffect(() => {
+    setSummary(null);
+    reloadSummary();
+  }, [reloadSummary]);
+
   const others = (me?.restaurants || []).filter((r) => r.id !== restaurantId);
 
   const sidebar = (
@@ -47,7 +61,7 @@ export function Layout() {
       <div className="px-2 pb-3 pt-1">
         {restaurant ? (
           <>
-            <div className="truncate text-[14px] font-semibold text-text">{restaurant.name}</div>
+            <div className="truncate font-serif text-[17px] font-semibold text-text">{restaurant.name}</div>
             <a
               className="mt-0.5 inline-flex items-center gap-1 font-mono text-[10.5px] text-dim hover:text-muted"
               href={restaurant.qr_target_url}
@@ -62,7 +76,7 @@ export function Layout() {
         )}
       </div>
 
-      {nav.map(({ to, label, icon: Icon, end }) => (
+      {nav.map(({ to, label, icon: Icon, end, badge }) => (
         <NavLink
           key={label}
           to={to ? `/r/${restaurantId}/${to}` : `/r/${restaurantId}`}
@@ -77,6 +91,11 @@ export function Layout() {
         >
           <Icon size={15} />
           {label}
+          {badge && summary?.openIssues > 0 && (
+            <span className="ml-auto rounded-full bg-accent px-1.5 py-px font-mono text-[10.5px] text-accent-ink">
+              {summary.openIssues}
+            </span>
+          )}
         </NavLink>
       ))}
 
@@ -119,7 +138,7 @@ export function Layout() {
         <IconButton onClick={() => setDrawer(true)} aria-label="Open menu">
           <MenuIcon size={14} />
         </IconButton>
-        <span className="truncate text-[13.5px] font-semibold">{restaurant?.name || ''}</span>
+        <span className="truncate font-serif text-[15px] font-semibold">{restaurant?.name || ''}</span>
       </header>
       {drawer && (
         <div className="fixed inset-0 z-30 lg:hidden">
@@ -139,7 +158,15 @@ export function Layout() {
               tables has changed.
             </div>
           )}
-          <Outlet context={{ restaurant, restaurantId, reload: () => api.getRestaurant(restaurantId).then(setRestaurant) }} />
+          <Outlet
+            context={{
+              restaurant,
+              restaurantId,
+              reload: () => api.getRestaurant(restaurantId).then(setRestaurant),
+              summary,
+              reloadSummary,
+            }}
+          />
         </div>
       </main>
     </div>

@@ -26,7 +26,7 @@ const FILTERS = [
 ];
 
 export function Feedback() {
-  const { restaurant, restaurantId } = useOutletContext();
+  const { restaurant, restaurantId, reloadSummary } = useOutletContext();
   const [visits, setVisits] = useState(null);
   const [filter, setFilter] = useState('all');
   const [expanded, setExpanded] = useState(null);
@@ -56,7 +56,7 @@ export function Feedback() {
   return (
     <div>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-[19px] font-semibold tracking-[-0.01em]">Feedback</h1>
+        <h1 className="font-serif text-[26px] font-medium tracking-[-0.015em]">Feedback</h1>
         <div className="flex gap-1.5">
           {FILTERS.map((f) => (
             <Button key={f.key} variant={filter === f.key ? 'secondary' : 'ghost'} onClick={() => setFilter(f.key)}>
@@ -87,7 +87,10 @@ export function Feedback() {
               restaurantId={restaurantId}
               open={expanded === v.id}
               onToggle={() => setExpanded(expanded === v.id ? null : v.id)}
-              onChanged={load}
+              onChanged={() => {
+                load();
+                reloadSummary();
+              }}
             />
           ))}
         </div>

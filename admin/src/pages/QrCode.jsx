@@ -118,7 +118,7 @@ export function QrCode() {
 
   return (
     <div>
-      <h1 className="mb-1 text-[19px] font-semibold tracking-[-0.01em]">QR code</h1>
+      <h1 className="mb-1 font-serif text-[26px] font-medium tracking-[-0.015em]">QR code</h1>
       <p className="mb-5 text-[12.5px] text-muted">
         One code for the whole restaurant. Put it on your coasters.
       </p>

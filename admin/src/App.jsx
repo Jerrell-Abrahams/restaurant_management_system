@@ -7,6 +7,8 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
 import { Restaurants } from './pages/Restaurants';
+import { Overview } from './pages/Overview';
+import { Display } from './pages/Display';
 import { Feedback } from './pages/Feedback';
 import { MenuEditor } from './pages/MenuEditor';
 import { Dishes } from './pages/Dishes';
@@ -36,8 +38,12 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+            {/* A sibling of the Layout route below, not nested in it -- the kitchen display must
+                not carry Layout's sidebar, nav badge or lapsed-subscription banner onto a TV. */}
+            <Route path="/r/:restaurantId/display" element={<ProtectedRoute><Display /></ProtectedRoute>} />
             <Route path="/r/:restaurantId" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-              <Route index element={<Feedback />} />
+              <Route index element={<Overview />} />
+              <Route path="feedback" element={<Feedback />} />
               <Route path="menu" element={<MenuEditor />} />
               <Route path="dishes" element={<Dishes />} />
               <Route path="qr" element={<QrCode />} />

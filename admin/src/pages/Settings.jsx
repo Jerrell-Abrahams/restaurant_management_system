@@ -52,6 +52,7 @@ export function Settings() {
         address: restaurant.address || '',
         hours: restaurant.hours || {},
         closedNote: restaurant.closed_note || '',
+        serviceRequests: !!restaurant.service_requests_enabled,
       });
     }
   }, [restaurant]);
@@ -74,7 +75,7 @@ export function Settings() {
 
   return (
     <form onSubmit={save}>
-      <h1 className="mb-5 text-[19px] font-semibold tracking-[-0.01em]">Settings</h1>
+      <h1 className="mb-5 font-serif text-[26px] font-medium tracking-[-0.015em]">Settings</h1>
 
       <Card className="mb-4 p-0">
         <CardHeader><CardTitle>Restaurant</CardTitle></CardHeader>
@@ -206,6 +207,38 @@ export function Settings() {
               ))}
             </Select>
           </Field>
+        </div>
+      </Card>
+
+      <Card className="mb-4 p-0">
+        <CardHeader><CardTitle>Table service</CardTitle></CardHeader>
+        <div className="flex flex-col gap-3 p-4">
+          <label className="flex items-center gap-2.5 text-[13px] text-text">
+            <input
+              type="checkbox"
+              checked={form.serviceRequests}
+              onChange={(e) => setForm({ ...form, serviceRequests: e.target.checked })}
+            />
+            Show &ldquo;Call waiter&rdquo; and &ldquo;Request bill&rdquo; buttons on the menu
+          </label>
+          <p className="text-[11.5px] leading-relaxed text-dim">
+            A diner taps one, is asked their table once, and it appears on the kitchen display
+            until a staff member clears it. The menu is cached a minute, so this can take that long
+            to reach a phone that scans after you change it — and a phone that already has the menu
+            open keeps whatever it last loaded either way.
+          </p>
+          {restaurant.service_requests_enabled && (
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-fit"
+              // Synchronous inside the click handler, no await before it -- an async window.open
+              // is a popup block in most browsers.
+              onClick={() => window.open(`/r/${restaurantId}/display`, 'kitchen-display')}
+            >
+              Open kitchen display
+            </Button>
+          )}
         </div>
       </Card>
 

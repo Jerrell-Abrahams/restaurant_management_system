@@ -11,7 +11,7 @@ export function DropdownMenuContent({ className, align = 'start', ...props }) {
         align={align}
         sideOffset={6}
         className={cn(
-          'z-50 min-w-[180px] rounded-md border border-border bg-panel p-1 shadow-[var(--shadow)]',
+          'z-50 min-w-[180px] rounded-md border border-border bg-panel p-1 shadow-[var(--lift)]',
           // Radix computes the origin from which side it opened, so the menu grows out of
           // the trigger rather than out of its own centre.
           'origin-[var(--radix-dropdown-menu-content-transform-origin)]',

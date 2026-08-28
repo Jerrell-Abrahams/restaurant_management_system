@@ -6,6 +6,7 @@ const { resolve } = require('../lib/restaurants');
 const { normalizeSlug, slugError } = require('../lib/slug');
 const { parsePrice } = require('../lib/money');
 const { summarize, leaderboards, MIN_RATINGS } = require('../lib/dishes');
+const { summarizeOverview } = require('../lib/overview');
 const qr = require('../lib/qr');
 const { hoursError } = require('../lib/hours');
 
@@ -114,6 +115,10 @@ router.patch('/restaurants/:id', async (req, res) => {
   // Admin-only fields. Place ID especially: a restaurant user pasting the wrong one would
   // silently send their diners to a competitor's review form, and nobody would notice for months.
   // Owner and subscription are the account's own wiring and are not the customer's to rewrite.
+  // Owner's own floor operation, not admin-gated -- same reasoning as address/hours above: the
+  // failure mode of a wrong value here is "the buttons are on or off", not a wrong review link.
+  if ('serviceRequests' in req.body) patch.service_requests_enabled = !!req.body.serviceRequests;
+
   if (req.isAdmin) {
     if ('googlePlaceId' in req.body) patch.google_place_id = req.body.googlePlaceId || null;
     if ('ownerUserId' in req.body) patch.owner_user_id = req.body.ownerUserId || null;
@@ -128,6 +133,40 @@ router.patch('/restaurants/:id', async (req, res) => {
     .single();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
+});
+
+// --- Overview ------------------------------------------------------------------------------
+
+// The dashboard's numbers in one request: today's count, the all-time average, how many open
+// issues need a response, and the most recent three of those in full. Everything here is real
+// -- there is no scan-tracking table, so there is deliberately no "scans" or "run rate" figure.
+router.get('/restaurants/:id/summary', async (req, res) => {
+  const ctx = await resolve(req, res);
+  if (!ctx) return;
+
+  const { data: visits, error } = await db
+    .from('visits')
+    .select('id, rating, comment, contact, resolved, created_at')
+    .eq('restaurant_id', ctx.restaurant.id)
+    .not('rating', 'is', null)
+    .order('created_at', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+
+  const summary = summarizeOverview(visits, ctx.restaurant.alert_threshold);
+
+  // Dish counts for the urgent preview only -- bounded to the (at most 3) visits being shown,
+  // not every visit, so this stays a cheap second query rather than the full feedback join.
+  if (summary.urgent.length) {
+    const { data: ratings } = await db
+      .from('item_ratings')
+      .select('visit_id')
+      .in('visit_id', summary.urgent.map((v) => v.id));
+    const counts = new Map();
+    (ratings || []).forEach((r) => counts.set(r.visit_id, (counts.get(r.visit_id) || 0) + 1));
+    summary.urgent = summary.urgent.map((v) => ({ ...v, itemCount: counts.get(v.id) || 0 }));
+  }
+
+  res.json(summary);
 });
 
 // --- Menu --------------------------------------------------------------------------------
@@ -451,6 +490,51 @@ router.get('/restaurants/:id/qr', async (req, res) => {
   res.set('Content-Type', contentType);
   res.set('Content-Disposition', `attachment; filename="${filename}"`);
   res.send(buffer);
+});
+
+// --- Service requests (kitchen display) -----------------------------------------------------
+//
+// Call waiter / request bill, raised from the diner menu (routes/public.js) and cleared here.
+// Polled by admin/src/pages/Display.jsx every 5s -- kept to one query on purpose.
+
+// No time filter: staleness is handled once, by cron's sweepServiceRequests (routes/cron.js), by
+// acknowledging old rows -- not by hiding them here. The dedupe index in service_requests.sql
+// keys on acknowledged_at is null, so filtering an old-but-still-open row out of this list would
+// let it silently keep blocking that table+kind from ever raising another card while diners kept
+// getting told "ok".
+router.get('/restaurants/:id/service-requests', async (req, res) => {
+  const ctx = await resolve(req, res);
+  if (!ctx) return;
+
+  const { data, error } = await db
+    .from('service_requests')
+    .select('id, table_label, kind, created_at')
+    .eq('restaurant_id', ctx.restaurant.id)
+    .is('acknowledged_at', null)
+    .order('created_at');
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// Plain resolve(), not { write: true } -- deliberately diverges from every other write in this
+// file. The diner buttons above keep working on a lapsed subscription (the menu is never
+// billing-gated), so blocking acknowledge here would leave staff unable to clear a screen that
+// keeps filling up: an overdue invoice becoming a jammed kitchen display is worse than the
+// inconsistency. Everything else in the console still goes read-only as normal.
+router.patch('/restaurants/:id/service-requests/:requestId', async (req, res) => {
+  const ctx = await resolve(req, res);
+  if (!ctx) return;
+
+  const { data, error } = await db
+    .from('service_requests')
+    .update({ acknowledged_at: new Date().toISOString(), acknowledged_by: req.user.id })
+    .eq('id', req.params.requestId)
+    .eq('restaurant_id', ctx.restaurant.id) // scopes the write to this restaurant
+    .select('id')
+    .maybeSingle();
+  if (error) return res.status(500).json({ error: error.message });
+  if (!data) return res.status(404).json({ error: 'Request not found' });
+  res.status(204).end();
 });
 
 module.exports = router;

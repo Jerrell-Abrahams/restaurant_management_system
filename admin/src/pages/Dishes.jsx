@@ -9,8 +9,8 @@ import { Skeleton } from '../components/ui/Skeleton';
 import { cn } from '../components/ui/cn';
 
 // Colour follows the score, not the rank: a 4.6 is good whether or not it happens to be bottom of
-// a very good menu.
-const scoreColor = (avg) => (avg === null ? 'text-dim' : avg >= 4 ? 'text-ok' : avg >= 3 ? 'text-warn' : 'text-bad');
+// a very good menu. Exported so Overview's "dishes to watch" panel renders the same way.
+export const scoreColor = (avg) => (avg === null ? 'text-dim' : avg >= 4 ? 'text-ok' : avg >= 3 ? 'text-warn' : 'text-bad');
 
 export function Dishes() {
   const { restaurantId } = useOutletContext();
@@ -28,7 +28,7 @@ export function Dishes() {
 
   return (
     <div>
-      <h1 className="mb-1 text-[19px] font-semibold tracking-[-0.01em]">Dishes</h1>
+      <h1 className="mb-1 font-serif text-[26px] font-medium tracking-[-0.015em]">Dishes</h1>
       <p className="mb-5 text-[12.5px] text-muted">
         What diners rated, and how it is moving. Nothing is ranked until it has {minRatings} ratings.
       </p>
@@ -130,7 +130,7 @@ function Board({ title, rows, metric = 'average', empty = 'Not enough ratings ye
   );
 }
 
-function Trend({ value }) {
+export function Trend({ value }) {
   // Null means there was nothing to compare against, not that nothing changed. Rendering it as
   // "0.0" would be a claim we cannot support.
   if (value === null || value === undefined) return <span className="text-dim">–</span>;

@@ -48,6 +48,11 @@ export const updateItem = (id, itemId, body) => patch(`/api/admin/restaurants/${
 export const getFeedback = (id, params = '') => get(`/api/admin/restaurants/${id}/feedback${params}`);
 export const updateVisit = (id, visitId, body) => patch(`/api/admin/restaurants/${id}/visits/${visitId}`, body);
 export const getDishes = (id) => get(`/api/admin/restaurants/${id}/dishes`);
+export const getSummary = (id) => get(`/api/admin/restaurants/${id}/summary`);
+
+export const getServiceRequests = (id) => get(`/api/admin/restaurants/${id}/service-requests`);
+export const ackServiceRequest = (id, requestId) =>
+  patch(`/api/admin/restaurants/${id}/service-requests/${requestId}`, {});
 
 // Admin only. Both files go up together -- the API rejects a half pair, because an SVG from one
 // restaurant sitting next to another's PNG is the failure that reaches a printer.

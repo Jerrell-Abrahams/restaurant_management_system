@@ -26,7 +26,7 @@ router.post('/provision', async (req, res) => {
     return res.status(401).json({ error: 'unauthorized' });
   }
 
-  const { subscriptionId, email, password, fullName, restaurantName, slug: slugInput } = req.body || {};
+  const { subscriptionId, email, password, fullName, restaurantName, slug: slugInput, googlePlaceId } = req.body || {};
   if (!subscriptionId || !email || !password || !restaurantName) {
     return res.status(400).json({ error: 'subscriptionId, email, password and restaurantName are required' });
   }
@@ -69,7 +69,7 @@ router.post('/provision', async (req, res) => {
 
   const { data: restaurant, error: restaurantError } = await db
     .from('restaurants')
-    .insert({ subscription_id: subscriptionId, owner_user_id: created.user.id, name: restaurantName, slug })
+    .insert({ subscription_id: subscriptionId, owner_user_id: created.user.id, name: restaurantName, slug, google_place_id: googlePlaceId || null })
     .select()
     .single();
 

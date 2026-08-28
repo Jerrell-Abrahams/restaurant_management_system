@@ -88,7 +88,7 @@ export function Restaurants() {
               placeholder={slugify(form.name) || 'marios-kitchen'}
             />
           </Field>
-          {slug && <p className="-mt-1 font-mono text-[11px] text-dim">qr.complexai.co.za/{slug}</p>}
+          {slug && <p className="-mt-1 font-mono text-[11px] text-dim">menu.complexai.co.za/{slug}</p>}
           <Field label="Google Place ID" hint="Optional. Without it the thank-you screen shows no Google link.">
             <Input value={form.googlePlaceId} onChange={(e) => setForm({ ...form, googlePlaceId: e.target.value })} />
           </Field>

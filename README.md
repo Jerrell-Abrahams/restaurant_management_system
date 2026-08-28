@@ -55,7 +55,8 @@ root API from its `admin/` SPA.
 
 | Surface | Domain |
 |---|---|
-| API + diner pages | `api.complexai.co.za`, `menu.complexai.co.za` |
+| API | `restaurant-management-api.vercel.app` (Vercel default, no custom domain) |
+| Diner pages | `menu.complexai.co.za` (custom domain on the API project) |
 | Owner console | `res.complexai.co.za` |
 
 ## Setup

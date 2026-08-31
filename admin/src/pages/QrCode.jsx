@@ -163,8 +163,10 @@ export function QrCode() {
                     variant={format === 'svg' ? 'primary' : 'secondary'}
                     onClick={() => download(format)}
                     disabled={!!busy}
+                    loading={busy === format}
+                    title={`Download the ${format.toUpperCase()} file`}
                   >
-                    <Download size={13} />
+                    {busy !== format && <Download />}
                     {busy === format ? 'Downloading…' : format === 'svg' ? 'SVG (for print)' : 'PNG'}
                   </Button>
                 ))}
@@ -225,8 +227,8 @@ export function QrCode() {
 
             {/* Both or neither: the API rejects a half pair, and this saves the round trip. */}
             <div>
-              <Button type="submit" disabled={!files.svg || !files.png || !!busy}>
-                <Upload size={13} /> {busy === 'upload' ? 'Uploading…' : 'Upload both'}
+              <Button type="submit" disabled={!files.svg || !files.png || !!busy} loading={busy === 'upload'} title="Upload both QR files">
+                {busy !== 'upload' && <Upload />} {busy === 'upload' ? 'Uploading…' : 'Upload both'}
               </Button>
             </div>
           </form>

@@ -6,11 +6,9 @@ import * as api from '../api';
 import { Button } from '../components/ui/Button';
 import { Card, MicroLabel } from '../components/ui/Card';
 import { Skeleton } from '../components/ui/Skeleton';
+import { Stars } from '../components/ui/Stars';
 import { cn } from '../components/ui/cn';
 import { scoreColor, Trend } from './Dishes';
-
-const FACES = ['\u{1F61E}', '\u{1F641}', '\u{1F610}', '\u{1F642}', '\u{1F60D}'];
-const face = (n) => FACES[n - 1] || '–';
 
 const when = (iso) => {
   const mins = Math.round((Date.now() - new Date(iso)) / 60000);
@@ -79,6 +77,7 @@ export function Overview() {
         {restaurant?.service_requests_enabled && (
           <Button
             variant="secondary"
+            title="Open the kitchen display in a new window"
             // Synchronous inside the click handler, no await before it -- an async window.open is
             // a popup block in most browsers.
             onClick={() => window.open(`/r/${restaurantId}/display`, 'kitchen-display')}
@@ -100,8 +99,8 @@ export function Overview() {
               menu reads the way you want it to, and get the code onto the tables.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
-              <Button onClick={() => navigate(`/r/${restaurantId}/menu`)}>Check the menu</Button>
-              <Button variant="secondary" onClick={() => navigate(`/r/${restaurantId}/qr`)}>Get the coaster file</Button>
+              <Button onClick={() => navigate(`/r/${restaurantId}/menu`)} title="Go to the menu editor">Check the menu</Button>
+              <Button variant="secondary" onClick={() => navigate(`/r/${restaurantId}/qr`)} title="Go to the QR code page">Get the coaster file</Button>
             </div>
           </div>
         </Card>
@@ -118,7 +117,7 @@ export function Overview() {
             <div className="flex flex-col gap-3">
               <div className="flex items-baseline gap-2">
                 <h2 className="font-serif text-[17px] font-semibold">Deal with these first</h2>
-                <button onClick={() => navigate(`/r/${restaurantId}/feedback`)} className="ml-auto text-[12px] text-accent">
+                <button onClick={() => navigate(`/r/${restaurantId}/feedback`)} className="ml-auto text-[12px] text-accent" title="Open the feedback inbox">
                   Open inbox
                 </button>
               </div>
@@ -130,7 +129,7 @@ export function Overview() {
                 ) : (
                   summary.urgent.map((v) => (
                     <div key={v.id} className="flex gap-3 border-b border-border px-4 py-3 last:border-0">
-                      <span className="text-[20px] leading-none">{face(v.rating)}</span>
+                      <Stars value={v.rating} size={14} className="self-center" />
                       <div className="min-w-0 flex-1">
                         <p className="text-[13.5px] leading-snug text-text">
                           {v.comment || <span className="text-dim">No comment</span>}
@@ -141,8 +140,8 @@ export function Overview() {
                           {v.contact && <span>· contact left</span>}
                         </div>
                       </div>
-                      <Button onClick={() => resolveVisit(v.id)} className="shrink-0 self-start">
-                        <Check size={13} /> Resolve
+                      <Button onClick={() => resolveVisit(v.id)} className="shrink-0 self-start" title="Mark resolved">
+                        <Check /> Resolve
                       </Button>
                     </div>
                   ))
@@ -151,7 +150,7 @@ export function Overview() {
 
               <div className="mt-2 flex items-baseline gap-2">
                 <h2 className="font-serif text-[17px] font-semibold">Off the menu right now</h2>
-                <button onClick={() => navigate(`/r/${restaurantId}/menu`)} className="ml-auto text-[12px] text-accent">
+                <button onClick={() => navigate(`/r/${restaurantId}/menu`)} className="ml-auto text-[12px] text-accent" title="Go to the menu editor">
                   Edit menu
                 </button>
               </div>
@@ -165,7 +164,7 @@ export function Overview() {
                       className="flex items-center gap-2 rounded-full border border-border-2 bg-panel py-1 pl-3 pr-1 text-[12.5px]"
                     >
                       {item.name}
-                      <button onClick={() => backOn(item)} className="rounded-full bg-raised px-2.5 py-1 text-[11px] text-muted">
+                      <button onClick={() => backOn(item)} className="rounded-full bg-raised px-2.5 py-1 text-[11px] text-muted" title={`Mark ${item.name} back on the menu`}>
                         Back on
                       </button>
                     </span>

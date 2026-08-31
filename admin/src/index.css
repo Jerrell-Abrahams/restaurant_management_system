@@ -232,6 +232,46 @@ body {
   color: var(--color-accent-ink);
 }
 
+/* An icon-only button (theme toggle, logout, mobile menu, row actions) has no label to share
+ * space with, so its icon can run bigger than a labelled Button's `[&>svg]:size-5` -- and the
+ * button itself grows slightly too (32px -> 36px), so a 28px icon has 4px of breathing room
+ * instead of crowding the border. Sets both dimensions on this one rule rather than fighting
+ * Button's own `w-8`/`h-8` with a second, same-property className: deliberately unlayered, same
+ * reasoning as the `a{}` rule above -- a same-layer utility class competing on the same property
+ * is decided by generation order, not by which was written more specifically. */
+.icon-btn {
+  width: 2.25rem;
+  height: 2.25rem;
+}
+.icon-btn > svg {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+/* The OS default scrollbar is a thick grey bar that doesn't belong on a designed dark surface --
+ * most visible in the modal's overflow-y-auto once a form (e.g. the section hours editor) grows
+ * past viewport height. Firefox gets scrollbar-color; everything else gets ::-webkit-scrollbar.
+ * Global, not scoped to the modal, since any scroll container in the console gets the same OS
+ * scrollbar otherwise. */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-2) transparent;
+}
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-2);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-dim);
+}
+
 /* The CSS half of reduced motion -- Radix overlay keyframes and the skeleton pulse. The
  * motion/react half is handled by <MotionConfig reducedMotion="user"> in App.jsx. */
 @media (prefers-reduced-motion: reduce) {

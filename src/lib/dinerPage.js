@@ -1,5 +1,7 @@
 const { formatCents } = require('./money');
 const { DAYS, status, CLOSING_SOON_MINS } = require('./hours');
+const { ALLERGEN_LABELS } = require('./dietary');
+const { PROMO_LABEL_TEXT } = require('./promotions');
 
 // The diner surface, rendered as one HTML string. No build step, no bundle, no hydration: this
 // loads on a phone on restaurant wifi, from a coaster, while someone waits for food. Everything
@@ -42,20 +44,26 @@ const STYLE = `
      glide rather than snap. Browsers without it fall back to the snap, which is what we had. */
   interpolate-size:allow-keywords;
   --bg:#faf7f1; --raised:#fffdf8; --card:#fdfbf6; --panel:#f4efe4;
-  --heading:#1d1a16; --text:#1d1a16; --muted:#6d665c; --dim:#8a8378;
+  /* Softer than near-black on purpose: #1d1a16 on this cream bg was 16.2:1, well past the 7:1
+     AAA needs even for body text. #403a30 lands at 10.5:1 -- still comfortably AAA, less glare. */
+  --heading:#403a30; --text:#403a30; --muted:#6d665c; --dim:#8a8378;
   --accent:#8a6526; --lit:#b8873a; --lit-bg:rgba(184,135,58,.1); --unlit:#ddd6c8;
   --border:rgba(29,26,22,.12); --border-strong:rgba(29,26,22,.16); --hair:rgba(29,26,22,.09);
   --dots:rgba(29,26,22,.2);
   --card-open-border:rgba(150,112,47,.35); --card-open-bg:#fffdf8;
   --card-open-shadow:0 18px 40px -26px rgba(60,45,20,.45);
   --header-bg:rgba(250,247,241,.93);
-  --fade:linear-gradient(180deg,rgba(250,247,241,0),rgba(250,247,241,.97) 45%);
+  --fade:linear-gradient(180deg,rgba(250,247,241,0) 0,rgba(250,247,241,1) 16px);
   --cta-bg:#1d1a16; --cta-border:#1d1a16; --cta-ink:#faf7f1; --cta-arrow:#dcb974;
   --serif:'Cormorant Garamond',Georgia,'Times New Roman',serif;
   --sans:Jost,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
 }
+/* Dark vars are declared twice on purpose: once behind the media query (system preference, unless
+   the diner picked light explicitly) and once behind [data-theme="dark"] (the manual toggle below,
+   which must win even when the system is in light mode). One block feeding both would mean the
+   toggle can only ever agree with the system, never override it. */
 @media (prefers-color-scheme:dark){
-  :root{
+  :root:not([data-theme="light"]){
     --bg:#0f0e0c; --raised:rgba(232,228,220,.03); --card:rgba(232,228,220,.02);
     --panel:rgba(232,228,220,.035);
     --heading:#f4eee2; --text:#e8e4dc; --muted:#918a7d; --dim:#7f7768;
@@ -66,10 +74,25 @@ const STYLE = `
     --card-open-bg:linear-gradient(180deg,rgba(201,162,92,.07),rgba(201,162,92,.015));
     --card-open-shadow:none;
     --header-bg:rgba(15,14,12,.94);
-    --fade:linear-gradient(180deg,rgba(15,14,12,0),rgba(15,14,12,.97) 45%);
+    --fade:linear-gradient(180deg,rgba(15,14,12,0) 0,rgba(15,14,12,1) 16px);
     --cta-bg:rgba(201,162,92,.09); --cta-border:rgba(201,162,92,.45); --cta-ink:#dcb974;
     --cta-arrow:#c9a25c;
   }
+}
+:root[data-theme="dark"]{
+  --bg:#0f0e0c; --raised:rgba(232,228,220,.03); --card:rgba(232,228,220,.02);
+  --panel:rgba(232,228,220,.035);
+  --heading:#f4eee2; --text:#e8e4dc; --muted:#918a7d; --dim:#7f7768;
+  --accent:#c9a25c; --lit:#dcb974; --lit-bg:rgba(201,162,92,.1); --unlit:#3d382f;
+  --border:rgba(232,228,220,.08); --border-strong:rgba(232,228,220,.13);
+  --hair:rgba(232,228,220,.09); --dots:rgba(232,228,220,.16);
+  --card-open-border:rgba(201,162,92,.32);
+  --card-open-bg:linear-gradient(180deg,rgba(201,162,92,.07),rgba(201,162,92,.015));
+  --card-open-shadow:none;
+  --header-bg:rgba(15,14,12,.94);
+  --fade:linear-gradient(180deg,rgba(15,14,12,0) 0,rgba(15,14,12,1) 16px);
+  --cta-bg:rgba(201,162,92,.09); --cta-border:rgba(201,162,92,.45); --cta-ink:#dcb974;
+  --cta-arrow:#c9a25c;
 }
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
@@ -80,14 +103,24 @@ body{margin:0;background:var(--bg);color:var(--text);-webkit-font-smoothing:anti
 body[data-service]{padding-bottom:172px}
 header{position:sticky;top:0;z-index:6;background:var(--header-bg);
   -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
-  border-bottom:1px solid var(--hair);padding:18px 24px 0}
-.head-row{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
-h1{margin:0;font-family:var(--serif);font-size:29px;font-weight:500;line-height:1;
+  border-bottom:1px solid var(--hair);padding:18px 18px 16px}
+/* center, not baseline: the right-hand item used to be .burger alone, whose text glyph gave the
+   row a real baseline to align to. It is now .head-actions, an icon-only flex group with no text
+   -- flex's baseline forwarding would synthesize one from an SVG's box edge instead, which does
+   not land in the same place. Center is the reference point icons and a heading actually share. */
+.head-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+h1{margin:0;font-family:var(--serif);font-size:24.5px;font-weight:500;line-height:1;
   color:var(--heading)}
-/* 44px tap floor, same as every other control on this page -- this one gets hit one-handed too. */
-.burger{flex:0 0 auto;width:44px;height:44px;margin-bottom:-8px;border-radius:12px;border:0;
+/* Groups the theme toggle and the burger as one flex item so space-between above still puts a
+   single block on the right. */
+.head-actions{display:flex;align-items:center;gap:2px}
+/* 44px tap floor, same as every other control on this page -- these get hit one-handed too. */
+.burger{flex:0 0 auto;width:44px;height:44px;border-radius:7px;border:0;
   background:none;color:var(--muted);font-size:20px;line-height:1;cursor:pointer;
   -webkit-tap-highlight-color:transparent}
+.theme-toggle{flex:0 0 auto;width:44px;height:44px;display:flex;align-items:center;
+  justify-content:center;border-radius:7px;border:0;background:none;color:var(--muted);
+  cursor:pointer;-webkit-tap-highlight-color:transparent}
 .sub{margin:8px 0 0;font-size:10px;letter-spacing:.34em;text-transform:uppercase;
   color:var(--accent)}
 /* Hidden by default and only ever un-hidden client-side, in the inline script below -- the page
@@ -98,18 +131,16 @@ h1{margin:0;font-family:var(--serif);font-size:29px;font-weight:500;line-height:
 .hours-badge[data-state="closing-soon"]{color:var(--accent)}
 .hours-badge::before{content:"";display:inline-block;width:6px;height:6px;margin-right:7px;
   border-radius:50%;background:currentColor;vertical-align:middle}
-.search{width:100%;height:48px;margin:14px 0;border-radius:999px;
-  border:1px solid var(--border-strong);background:var(--raised);color:var(--text);
-  padding:0 20px;font:inherit;font-size:16px;font-weight:300;outline:none}
-.search::placeholder{color:var(--dim)}
-/* Category chips. A scrolling rail, not a wrapping set: eight categories wrapped would eat half
-   the first screen, and the menu is what someone scanned the coaster for. 44px tall like every
-   other tap target here -- these get hit one-handed, by someone holding a fork. */
-.chips{display:flex;gap:8px;margin:0 0 14px;overflow-x:auto;scrollbar-width:none;
+/* Category chips. Below the header's hairline now, not inside the sticky header itself, so they
+   scroll away with the menu instead of pinning at the top. A scrolling rail, not a wrapping set:
+   eight categories wrapped would eat half the first screen, and the menu is what someone scanned
+   the coaster for. 44px tall like every other tap target here -- these get hit one-handed, by
+   someone holding a fork -- read smaller through tighter padding and type, not a shorter target. */
+.chips{display:flex;gap:8px;margin:14px 0;padding:0 18px;overflow-x:auto;scrollbar-width:none;
   -webkit-overflow-scrolling:touch}
 .chips::-webkit-scrollbar{display:none}
-.chip{flex:0 0 auto;height:44px;padding:0 16px;border-radius:999px;border:1px solid var(--border);
-  background:var(--raised);color:var(--muted);font:inherit;font-size:10px;letter-spacing:.2em;
+.chip{flex:0 0 auto;height:44px;padding:0 13px;border-radius:999px;border:1px solid var(--border);
+  background:var(--raised);color:var(--muted);font:inherit;font-size:9.5px;letter-spacing:.18em;
   text-transform:uppercase;white-space:nowrap;cursor:pointer;
   -webkit-tap-highlight-color:transparent;
   transition:color .18s var(--ease),background .18s var(--ease),border-color .18s var(--ease),
@@ -117,11 +148,54 @@ h1{margin:0;font-family:var(--serif);font-size:29px;font-weight:500;line-height:
 .chip:active{transform:scale(.94)}
 .chip[aria-pressed="true"]{color:var(--lit);background:var(--lit-bg);
   border-color:var(--card-open-border)}
-.cat{margin:0;padding:26px 24px 12px;display:flex;align-items:center;gap:14px;
+/* Square, so the icon sits centred rather than in a pill sized for a word. */
+.chip-search{width:44px;padding:0;display:flex;align-items:center;justify-content:center}
+.chip-search[aria-expanded="true"]{color:var(--lit);background:var(--lit-bg);
+  border-color:var(--card-open-border)}
+/* The whole expand/collapse, in one transitioned width. The field grows into the row and the
+   chips are pushed out of the scroll port rather than being hidden or re-laid-out -- one property
+   animating, no JS measuring, and it reverses for free. overflow-x flips to hidden while open so
+   the pushed-away chips cannot be scrolled back into view mid-search. */
+.search-wrap{position:relative;flex:0 0 auto;width:0;overflow:hidden;
+  transition:width .32s var(--ease)}
+.chips[data-searching]{overflow-x:hidden}
+.chips[data-searching] .search-wrap{width:calc(100% - 52px)}
+.search{width:100%;height:44px;padding:0 38px 0 16px;border-radius:999px;
+  border:1px solid var(--border-strong);background:var(--raised);color:var(--text);
+  font:inherit;font-size:16px;font-weight:300;outline:none}
+.search::placeholder{color:var(--dim)}
+/* We ship our own X (below) so it can sit in the themed position and clear on one tap; WebKit's
+   would be a second one right beside it. */
+.search::-webkit-search-cancel-button{display:none}
+.search-x{position:absolute;right:2px;top:0;width:36px;height:44px;border:0;background:none;
+  color:var(--dim);font-size:13px;line-height:1;cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
+.cat{margin:0;padding:26px 18px 12px;display:flex;align-items:center;gap:14px;
   font-size:10px;font-weight:400;letter-spacing:.38em;text-transform:uppercase;color:var(--dim)}
 .cat::after{content:"";flex:1;height:1px;background:var(--hair)}
-.list{padding:0 24px 8px;display:flex;flex-direction:column;gap:12px}
-.item{border-radius:22px;border:1px solid var(--border);background:var(--card);overflow:hidden;
+/* Centers the chip row in the gap between the header's hairline and the first heading: above
+   is exactly .chips' own 14px margin-top, so this zeroes the equivalent padding here rather than
+   stacking on top of .chips' 14px margin-bottom -- 14px on both sides of the chips, instead of
+   14 above and 26 below. Every OTHER section still gets the full 26px, unaffected: it comes
+   entirely from this same padding, undisturbed, since sections butt against each other with no
+   margin of their own.
+   The structural "+" selector only ever matches the literal first section in the document, which
+   is exactly right before any filtering happens. Once a chip hides that section, whichever section
+   is now topmost is a later, un-zeroed one -- the gap would jump to 26px on every category but the
+   first. .cat-top (set client-side in apply() below) is the same zeroing, just retargetable as
+   the filter moves which section is actually on top. */
+.chips + section .cat, .cat-top .cat{padding-top:0}
+/* Only ever un-hidden client-side (see the inline script) -- same reasoning as .hours-badge: a
+   status baked in at render time could go stale on this page's 60s shared cache. */
+.cat-note{margin-left:2px;font-size:10px;font-weight:400;letter-spacing:.04em;
+  text-transform:none;color:var(--dim);white-space:nowrap}
+.list{padding:0 18px 8px;display:flex;flex-direction:column;gap:12px}
+/* Dimmed, not hidden and not pointer-events:none -- a diner who ate a breakfast item before the
+   section closed can still open it and rate it later. This is a display-only cue, same asymmetry
+   as the sold-out toggle: what a diner sees now and what feedback the API accepts are not the
+   same question. */
+.cat-paused .list{opacity:.5}
+.item{border-radius:12px;border:1px solid var(--border);background:var(--card);overflow:hidden;
   scroll-margin:120px 0;
   transition:background .24s var(--ease),border-color .24s var(--ease),box-shadow .24s var(--ease),
     opacity .22s var(--ease),transform .22s var(--ease),display .22s allow-discrete}
@@ -135,16 +209,47 @@ h1{margin:0;font-family:var(--serif);font-size:29px;font-weight:500;line-height:
 .leader{flex:1;border-bottom:1px dotted var(--dots);transform:translateY(-5px)}
 .price{font-size:15px;letter-spacing:.04em;color:var(--accent);white-space:nowrap;
   font-variant-numeric:tabular-nums}
+/* Promo/spice/diet's own row -- below the title, above the description, so a long name never has
+   to fight a pill for the same 23px line. Each pill still carries its own margin-left (shared with
+   the sold-out badge's spacing in .line), so :first-child resets it here rather than that being
+   duplicated per pill class. */
+.badges{margin-top:6px;padding:4px 0;display:flex;flex-wrap:wrap;align-items:center}
+.badges>:first-child{margin-left:0}
 .line2{margin-top:7px;display:flex;align-items:center;justify-content:space-between;gap:12px}
 .desc{font-size:14px;line-height:1.5;color:var(--muted);text-wrap:pretty}
-.caret{font-size:12px;color:var(--dim);transition:transform .2s}
+.caret{display:flex;color:var(--dim);transition:transform .22s var(--ease)}
 .item[open] .caret{transform:rotate(180deg)}
 .out{margin-left:10px;padding:6px 12px;border-radius:999px;border:1px solid var(--border-strong);
   font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);
   white-space:nowrap;vertical-align:middle}
+.spice{margin-left:8px;display:inline-flex;align-items:center;gap:1px;color:var(--accent);vertical-align:middle}
+.diet-badge{margin-left:8px;padding:3px 8px;border-radius:999px;
+  border:1px solid var(--card-open-border);color:var(--lit);font-size:9px;letter-spacing:.16em;
+  text-transform:uppercase;white-space:nowrap;vertical-align:middle}
+/* The one badge with marketing weight, so it gets the CTA's own solid-ink-pill treatment instead
+   of the outline the other badges use -- same three tokens the footer buttons use (bg/ink/arrow),
+   so it inherits their light/dark behaviour for free: solid ink pill by day, outlined brass pill
+   by night. When it is also standing in for hidden pills, the count lives inside this one pill
+   ("Popular · +1") rather than a second pill beside it -- see .more-badge below for the case
+   where nothing led with a promo to merge into. */
+.promo-badge{margin-left:8px;padding:4px 9px;border-radius:999px;border:1px solid var(--cta-border);
+  background:var(--cta-bg);color:var(--cta-ink);font-size:9px;letter-spacing:.16em;
+  text-transform:uppercase;white-space:nowrap;vertical-align:middle}
+.promo-badge .badge-sep{margin:0 3px;opacity:.5}
+.promo-badge .badge-more{color:var(--cta-arrow)}
+/* The overflow count in the row (muted, not the lit/accent look of the pills it stands in for --
+   it isn't itself a claim about the dish) and the pills it expands to, under the description. */
+.more-badge{margin-left:8px;padding:3px 8px;border-radius:999px;border:1px solid var(--border-strong);
+  color:var(--dim);font-size:9px;letter-spacing:.16em;text-transform:uppercase;white-space:nowrap;
+  vertical-align:middle}
+.more-pills{margin:0 0 14px}
+.more-pills>:first-child{margin-left:0}
+/* Only ever rendered when the admin ticked at least one box -- see renderItem. Sits above the
+   rating prompt so a diner reads it before deciding whether to rate, not after. */
+.allergens{margin:0 0 16px;font-size:12px;line-height:1.5;color:var(--dim)}
 .panel{padding:0 20px 20px}
 .rule{height:1px;background:var(--hair);margin-bottom:18px}
-.rate{padding:18px;border-radius:16px;background:var(--panel);border:1px solid var(--hair)}
+.rate{padding:18px;border-radius:9px;background:var(--panel);border:1px solid var(--hair)}
 .rate-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .lbl{font-size:10px;letter-spacing:.3em;text-transform:uppercase;color:var(--dim)}
 .opt{letter-spacing:.08em;text-transform:none;opacity:.75}
@@ -152,48 +257,56 @@ h1{margin:0;font-family:var(--serif);font-size:29px;font-weight:500;line-height:
 /* 44px minimum tap target, per the accessibility floor in the plan. These are tapped one-handed,
    by someone holding a fork. */
 .faces{display:flex;gap:6px;margin-top:12px}
-.face{width:46px;height:46px;border-radius:12px;display:flex;align-items:center;
+.face{width:46px;height:46px;border-radius:7px;display:flex;align-items:center;
   justify-content:center;font-size:24px;line-height:1;border:0;padding:0;background:none;
   color:var(--unlit);cursor:pointer;-webkit-tap-highlight-color:transparent;
   transition:color .18s var(--ease),background .18s var(--ease),transform .14s var(--ease)}
 .face:active{transform:scale(.92)}
 .face[aria-pressed="true"]{color:var(--lit);background:var(--lit-bg)}
 .rule2{margin:14px 0;height:1px;background:var(--hair)}
-.note{width:100%;margin-top:10px;padding:13px 14px;border-radius:12px;
+.note{width:100%;margin-top:10px;padding:13px 14px;border-radius:7px;
   border:1px solid var(--border-strong);background:var(--raised);color:var(--text);font:inherit;
   font-size:16px;font-weight:300;outline:none}
 .note::placeholder{color:var(--dim)}
-footer{position:fixed;left:0;right:0;bottom:0;z-index:7;padding:16px 24px 26px;
+.confirm-wrap>div{overflow:hidden}
+.confirm-btn{width:100%;margin-top:14px;height:44px;border-radius:999px;
+  border:1px solid var(--cta-border);background:var(--cta-bg);color:var(--cta-ink);font:inherit;
+  font-size:11px;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
+.confirm-btn.sent{background:var(--lit-bg);color:var(--lit);border-color:var(--card-open-border)}
+footer{position:fixed;left:0;right:0;bottom:0;z-index:7;padding:16px 18px 26px;
   background:var(--fade);pointer-events:none}
-.visit-cta{pointer-events:auto;display:flex;width:100%;align-items:center;
-  justify-content:space-between;height:56px;padding:0 22px;border-radius:999px;
-  border:1px solid var(--cta-border);background:var(--cta-bg);color:var(--cta-ink);
-  font:inherit;font-size:12px;letter-spacing:.22em;text-transform:uppercase;cursor:pointer}
-.visit-cta::after{content:"\\2192";letter-spacing:0;color:var(--cta-arrow)}
-/* Quieter than .visit-cta on purpose -- an outline pill, not a filled one. Equal weight with the
-   feedback CTA would hijack the page's primary purpose. Also reachable from the burger sheet
-   below (same data-kind, same handlers) as a second, less prominent path -- not a replacement:
-   burying it there alone would make "Request bill" undiscoverable on first visit. */
-.service-row{pointer-events:auto;display:flex;gap:8px;margin-bottom:10px}
-.service-btn{flex:1;height:48px;border-radius:999px;border:1px solid var(--border-strong);
-  background:var(--raised);color:var(--text);font:inherit;font-size:11px;letter-spacing:.16em;
-  text-transform:uppercase;cursor:pointer;-webkit-tap-highlight-color:transparent;
-  transition:transform .16s var(--ease),opacity .2s var(--ease),background .2s var(--ease)}
-.service-btn:active{transform:scale(.96)}
+/* --fade's solid-by-16px stop is matched to this padding-top on purpose: the buttons must sit on
+   fully opaque backdrop from their first pixel, not partway through a gradient still ramping up --
+   that's what read as "transparent" before. */
+/* All three footer actions are equal-weight CTAs -- Call waiter and Request bill get exactly as
+   much visual weight as Rate us, not a bold pill plus two quiet ones. Both service actions are
+   also reachable from the burger sheet below (same data-kind, same handlers) as a second, quieter
+   path -- not a replacement: burying them there alone would make "Request bill" undiscoverable on
+   first visit. */
+.cta-row{pointer-events:auto;display:flex;gap:8px}
+.cta-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:5px;height:60px;border-radius:11px;border:1px solid var(--cta-border);
+  background:var(--cta-bg);color:var(--cta-ink);font:inherit;font-size:9.5px;
+  letter-spacing:.1em;text-transform:uppercase;cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
+.cta-btn svg{color:var(--cta-arrow)}
+.cta-star{font-size:15px;line-height:1;color:var(--cta-arrow)}
 /* Covers both the footer pill and the sheet row below -- one request can be triggered from
    either place, and both must grey out together while it's cooling down or sending. */
 [data-kind][disabled]{opacity:.55;cursor:default;pointer-events:none}
-.overlay{position:fixed;inset:0;z-index:20;background:var(--bg);padding:26px 24px 34px;
+.overlay{position:fixed;inset:0;z-index:20;background:var(--bg);padding:26px 18px 34px;
   display:flex;flex-direction:column;justify-content:center;overflow-y:auto}
 .overlay h2{margin:0;font-family:var(--serif);font-size:34px;font-weight:500;line-height:1.15;
   color:var(--heading);text-wrap:pretty}
 .overlay p{margin:12px 0 26px;font-size:14px;line-height:1.6;color:var(--muted)}
 .overlay .faces{justify-content:space-between;gap:4px;margin-top:14px}
 .overlay .face{width:56px;height:56px;font-size:30px}
-.field{width:100%;margin-top:16px;padding:14px 16px;border-radius:16px;
+.field{width:100%;margin-top:16px;padding:14px 16px;border-radius:9px;
   border:1px solid var(--border-strong);background:var(--raised);color:var(--text);font:inherit;
   font-size:16px;font-weight:300;outline:none}
 .field::placeholder{color:var(--dim)}
+textarea.field{resize:vertical;min-height:96px;font-family:inherit}
 .purpose{margin:9px 0 0;font-size:11.5px;line-height:1.5;color:var(--dim)}
 .btn{display:flex;width:100%;margin-top:20px;height:56px;align-items:center;
   justify-content:center;border-radius:999px;border:1px solid var(--cta-border);
@@ -203,21 +316,40 @@ footer{position:fixed;left:0;right:0;bottom:0;z-index:7;padding:16px 24px 26px;
 .btn-ghost{background:none;border-color:var(--border);color:var(--dim)}
 .btn-quiet{display:inline-block;margin-top:18px;font-size:11px;letter-spacing:.2em;
   text-transform:uppercase;color:var(--muted);text-decoration:underline;text-underline-offset:4px}
-.close{position:absolute;top:18px;right:24px;width:38px;height:38px;border-radius:50%;
+.close{position:absolute;top:18px;right:18px;width:38px;height:38px;border-radius:50%;
   border:1px solid var(--border);background:none;color:var(--dim);font:inherit;font-size:15px;
   cursor:pointer}
-.empty{padding:36px 24px;color:var(--dim);font-size:14px}
+.empty{padding:36px 18px;color:var(--dim);font-size:14px}
 
 /* The burger sheet and the info modal both reuse .overlay -- see the block below it in the
-   markup for why a second full-screen pattern was not worth building for two menu rows. */
-.sheet-list{display:flex;flex-direction:column;gap:2px;margin-top:4px}
-.sheet-row{display:flex;align-items:center;justify-content:space-between;width:100%;
-  height:56px;padding:0 4px;border:0;border-bottom:1px solid var(--hair);background:none;
-  color:var(--text);font:inherit;font-size:15px;text-align:left;cursor:pointer;
-  -webkit-tap-highlight-color:transparent}
-.sheet-row:last-child{border-bottom:0}
-.sheet-row .chev{color:var(--dim);font-size:14px}
-.copied{margin-top:10px;font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;
+   markup for why a second full-screen pattern was not worth building for two menu rows.
+   Rows are grouped into cards (design canvas: More Menu.dc.html, variant 1A) rather than one
+   flat list -- table actions get their own group ahead of restaurant info, since they are what a
+   diner mid-meal is most likely to want. Every color here is an existing token: the accent icon
+   reuses --lit/--lit-bg, the same "this is lit up" pair the hours badge and active chip already
+   use, rather than a new one-off color. */
+.sheet-group{margin-top:22px}
+.sheet-group:first-of-type{margin-top:18px}
+.sheet-group-label{margin:0;padding:0 2px 10px;font-size:9.5px;font-weight:400;
+  letter-spacing:.3em;text-transform:uppercase;color:var(--dim)}
+.sheet-card{border:1px solid var(--border);border-radius:14px;background:var(--card);
+  overflow:hidden}
+.sheet-divider{height:1px;margin:0 16px 0 65px;background:var(--hair)}
+.sheet-row{width:100%;border:0;background:none;display:flex;align-items:center;gap:13px;
+  padding:14px;font:inherit;color:var(--text);text-align:left;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;transition:background .15s var(--ease)}
+.sheet-row:active{background:var(--panel)}
+.sheet-row-icon{flex:none;width:36px;height:36px;border-radius:10px;display:flex;
+  align-items:center;justify-content:center;background:var(--panel);color:var(--dim)}
+.sheet-row-icon--accent{background:var(--lit-bg);color:var(--lit)}
+.sheet-row-text{flex:1;min-width:0;display:flex;flex-direction:column}
+.sheet-row-title{font-size:15px}
+.sheet-row-subtitle{margin-top:2px;font-size:11.5px;color:var(--muted)}
+/* Overrides .hours-badge's own margin -- see the sheet's Hours & Address row below, which is
+   the one subtitle that isn't static copy and reuses that class (and applyBadge()) verbatim. */
+.sheet-row-subtitle.hours-badge{margin-top:2px}
+.chev{color:var(--dim);font-size:14px}
+.copied{margin-top:14px;font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;
   color:var(--lit)}
 
 .hours-table{margin-top:16px;display:flex;flex-direction:column}
@@ -228,7 +360,7 @@ footer{position:fixed;left:0;right:0;bottom:0;z-index:7;padding:16px 24px 26px;
 .hours-row .day{text-transform:uppercase;letter-spacing:.08em;font-size:10.5px}
 .map-link{display:block;margin-top:16px;font-size:13.5px;line-height:1.5;color:var(--accent);
   text-decoration:underline;text-underline-offset:3px}
-.closed-note{margin-top:14px;padding:12px 14px;border-radius:12px;background:var(--panel);
+.closed-note{margin-top:14px;padding:12px 14px;border-radius:7px;background:var(--panel);
   font-size:12.5px;line-height:1.5;color:var(--muted)}
 
 /* --- Motion ------------------------------------------------------------------------------
@@ -246,7 +378,7 @@ footer{position:fixed;left:0;right:0;bottom:0;z-index:7;padding:16px 24px 26px;
 /* Entrance. Header, CTA and the first screenful only: animating sixty dishes on load is paint
    work nobody sees, and someone scrolling to the mains should find them already there.
    Fill mode is backwards, never both: a forwards fill would pin opacity at 1 forever and the
-   search filter below could never fade anything out again. */
+   chip filter below could never fade a section out again. */
 header{animation:rise .45s var(--ease) backwards}
 footer{animation:rise .45s var(--ease) .1s backwards}
 section:first-of-type .item{animation:rise .45s var(--ease) backwards;
@@ -259,9 +391,9 @@ section:first-of-type .item{animation:rise .45s var(--ease) backwards;
     content-visibility .34s allow-discrete}
 .item[open]::details-content{block-size:auto;opacity:1}
 
-/* Search. Non-matches fade out, matches appear instantly: results that snap in read as fast,
-   results that snap out read as broken. The section fades with its dishes rather than vanishing
-   out from under them mid-fade. */
+/* Chip + search filter. Non-matches fade out, matches appear instantly: results that snap in read
+   as fast, results that snap out read as broken. The section fades with its dishes rather than
+   vanishing out from under them mid-fade. */
 .item[hidden]{display:none;opacity:0;transform:scale(.97)}
 section{transition:opacity .22s var(--ease),display .22s allow-discrete}
 section[hidden]{display:none;opacity:0}
@@ -298,16 +430,25 @@ section[hidden]{display:none;opacity:0}
 #contact-wrap[hidden]{display:none;grid-template-rows:0fr;opacity:0}
 @starting-style{#contact-wrap:not([hidden]){grid-template-rows:0fr;opacity:0}}
 
+/* Same 0fr->1fr morph as the contact field above, for the button that confirms a dish rating.
+   Hidden until the first tap on a star gives it something to confirm. */
+.confirm-wrap{display:grid;grid-template-rows:1fr;
+  transition:grid-template-rows .32s var(--ease),opacity .24s var(--ease),
+    display .32s allow-discrete}
+.confirm-wrap[hidden]{display:none;grid-template-rows:0fr;opacity:0}
+@starting-style{.confirm-wrap:not([hidden]){grid-template-rows:0fr;opacity:0}}
+.confirm-btn.pop{animation:pop .34s var(--ease)}
+
+.list{transition:opacity .3s var(--ease)}
+
 /* Touch feedback. */
 .search,.note,.field{transition:border-color .2s var(--ease),box-shadow .2s var(--ease)}
 .search:focus,.note:focus,.field:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--lit-bg)}
 .row{-webkit-tap-highlight-color:transparent;transition:background .18s var(--ease)}
 .item:not([open]) .row:active{background:var(--panel)}
-.visit-cta,.btn{transition:transform .16s var(--ease),opacity .2s var(--ease),
-  background .2s var(--ease),border-color .2s var(--ease)}
-.visit-cta:active,.btn:not([disabled]):active{transform:scale(.975)}
-.visit-cta::after{transition:transform .22s var(--ease)}
-.visit-cta:active::after{transform:translateX(4px)}
+.cta-btn,.btn,.confirm-btn{transition:transform .16s var(--ease),opacity .2s var(--ease),
+  background .2s var(--ease),border-color .2s var(--ease),color .2s var(--ease)}
+.cta-btn:active,.btn:not([disabled]):active,.confirm-btn:active{transform:scale(.975)}
 .close{transition:transform .18s var(--ease)}
 .close:active{transform:scale(.9)}
 .btn-quiet{transition:opacity .18s var(--ease)}
@@ -360,6 +501,42 @@ const scale = () =>
     )
     .join('');
 
+// Line icons, inline rather than an icon font or library -- three glyphs don't earn a dependency
+// on a page with a 14KB wire budget, and `currentColor` lets them pick up the ink/brass theming
+// for free. Rate us reuses the ★ glyph the rating stars already use above, rather than a fourth
+// icon, so the CTA row and the rating controls read as one language.
+const ICON_SEARCH =
+  '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>';
+const ICON_BELL =
+  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 4.2 1.4 5.8 2 6.5H4c.6-.7 2-2.3 2-6.5Z"/><path d="M10 18.5a2 2 0 0 0 4 0"/></svg>';
+const ICON_RECEIPT =
+  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-2-1.3-2 1.3-2-1.3-2 1.3-2-1.3-2 1.3V3Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>';
+// Theme toggle. The button shows the CURRENT mode's glyph (sun while light, moon while dark) --
+// both strings ride along into the inline script below, since the correct one depends on system
+// preference and localStorage, neither of which exist at render time. See the script for why.
+const ICON_SUN =
+  '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.5"/><path d="M12 2.5v3M12 18.5v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2.5 12h3M18.5 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>';
+const ICON_MOON =
+  '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/></svg>';
+// A drawn chevron rather than the ⌄ glyph it replaces: every font renders that character at a
+// different weight and optical center, so it never quite matched the rest of these icons. This one
+// does, and .caret below is what actually flips it on open/close -- the path itself never changes.
+const ICON_CHEVRON =
+  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
+// Spice level, drawn rather than the 🌶️ emoji it replaces -- same reasoning as ICON_CHEVRON:
+// a flat, single-color glyph that takes the theme's ink instead of each platform's own emoji art.
+const ICON_FLAME =
+  '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4"/></svg>';
+// The burger sheet's own row icons -- same 24x24/currentColor language as the set above, just three
+// more glyphs for the three rows that had none (Hours & Address, Share Menu, Suggestions). Call
+// waiter/Request bill reuse ICON_BELL/ICON_RECEIPT rather than drawing a second copy.
+const ICON_CLOCK =
+  '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3.2 2"/></svg>';
+const ICON_SHARE =
+  '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4m0 0L8.5 7.5M12 4l3.5 3.5"/><path d="M5 13v6a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-6"/></svg>';
+const ICON_BULB =
+  '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 21h4"/><path d="M7 9a5 5 0 1 1 8.5 3.5c-.9.9-1.5 1.7-1.5 3.5h-6c0-1.8-.6-2.6-1.5-3.5A5 5 0 0 1 7 9Z"/></svg>';
+
 // `i` arrives free from Array#map. It only feeds the entrance stagger, capped because past the
 // eighth dish nobody is watching the load animation any more.
 function renderItem(item, i) {
@@ -369,19 +546,54 @@ function renderItem(item, i) {
   // whose description mentions it, not only the ones with it in the title.
   const haystack = esc(`${item.name} ${item.description || ''}`.toLowerCase());
 
+  const dietLabel = item.diet === 'vegan' ? 'Vegan' : item.diet === 'vegetarian' ? 'Vegetarian' : '';
+  const promoLabel = PROMO_LABEL_TEXT[item.promo_label] || '';
+
+  // Spice is never collapsed -- it sits right next to the badge always, since it's closer to a
+  // safety cue than marketing. Promo and diet are the two that can crowd the row, so only those
+  // two collapse into one "+N" pill and reappear in full, under the description, once the card
+  // opens. Only worth doing when there IS a tap: a sold-out item is a flat row with no panel to
+  // reveal them in, so its badges never collapse.
+  const spicePill = item.spice_level ? `<span class="spice">${ICON_FLAME.repeat(item.spice_level)}</span>` : '';
+  const badges = [
+    promoLabel && `<span class="promo-badge">${esc(promoLabel)}</span>`,
+    dietLabel && `<span class="diet-badge">${dietLabel}</span>`,
+  ].filter(Boolean);
+  const collapse = item.available && badges.length > 1;
+  const hiddenPills = collapse ? badges.slice(1) : [];
+
+  // Promo is always first in `badges` when it exists, so it is always the one left standing once
+  // diet collapses -- the overflow count merges straight into it ("Popular · +1") rather than
+  // sitting in a second .more-badge pill next to it. Diet with no promo to merge into still gets
+  // the plain pill + separate count pill (impossible today with just these two, but cheap to keep
+  // correct if a third badge type joins them later).
+  const badgeMarkup = !collapse
+    ? badges.join('')
+    : promoLabel
+      ? `<span class="promo-badge">${esc(promoLabel)}<span class="badge-sep">·</span><span class="badge-more">+${hiddenPills.length}</span></span>`
+      : `${badges[0]}<span class="more-badge">+${hiddenPills.length}</span>`;
+  const shownBadges = badgeMarkup + spicePill;
+
   const row = `<span class="line">
       <span class="item-name">${esc(item.name)}</span>${item.available ? '' : '<span class="out">sold out</span>'}
       <span class="leader"></span>
       ${price ? `<span class="price">${esc(price)}</span>` : ''}
     </span>
+    ${shownBadges ? `<span class="badges">${shownBadges}</span>` : ''}
     ${
       item.description || item.available
         ? `<span class="line2">
       <span class="desc">${esc(item.description || '')}</span>
-      ${item.available ? '<span class="caret">⌄</span>' : ''}
+      ${item.available ? `<span class="caret">${ICON_CHEVRON}</span>` : ''}
     </span>`
         : ''
     }`;
+
+  // "Contains: ..." only when the admin has ticked something -- an empty list means "not
+  // specified", never "verified allergen-free", so it renders nothing rather than a false all-clear.
+  const allergenLine = item.allergens && item.allergens.length
+    ? `<p class="allergens">Contains: ${item.allergens.map((a) => esc(ALLERGEN_LABELS[a] || a)).join(', ')}</p>`
+    : '';
 
   // An unavailable dish carries no rating strip: there is no point inviting a rating for
   // something nobody at this table could have ordered tonight. With nothing to reveal it stays a
@@ -398,6 +610,8 @@ function renderItem(item, i) {
   <summary class="row">${row}</summary>
   <div class="panel">
     <div class="rule"></div>
+    ${hiddenPills.length ? `<div class="more-pills">${hiddenPills.join('')}</div>` : ''}
+    ${allergenLine}
     <div class="rate">
       <div class="rate-head">
         <span class="lbl">Rate this dish</span>
@@ -407,6 +621,9 @@ function renderItem(item, i) {
       <div class="rule2"></div>
       <div class="lbl">Add a note <span class="opt">(optional)</span></div>
       <input class="note" type="text" placeholder="Tell the chef…" aria-label="Comment on ${esc(item.name)}">
+      <div class="confirm-wrap" hidden><div>
+        <button class="confirm-btn" type="button">Confirm</button>
+      </div></div>
     </div>
   </div>
 </details>`;
@@ -447,24 +664,32 @@ function renderPage({ restaurant, menu }) {
 
   const sections = cats
     .map(
-      (c, i) => `<section data-cat="${i}">
-  <h2 class="cat">${esc(c.name)}</h2>
+      (c, i) => `<section data-cat="${i}" data-hours="${esc(JSON.stringify(c.hours || null))}">
+  <h2 class="cat">${esc(c.name)}<span class="cat-note" hidden></span></h2>
   <div class="list">${c.items.map(renderItem).join('')}</div>
 </section>`
     )
     .join('');
 
   // One category needs no filter -- the rail would read "All | Mains" and cost a row of the first
-  // screen to say nothing. Two or more and it earns the space.
-  const chips =
-    cats.length > 1
-      ? `<nav class="chips" aria-label="Filter by category">
+  // screen to say nothing. Two or more and it earns the space. The search field rides in the same
+  // rail rather than sitting above it: collapsed it costs 44px that the chips needed anyway, and
+  // expanded it takes the row over rather than adding a second one.
+  const hasFilters = cats.length > 1;
+  const chips = hasFilters
+    ? `<nav class="chips" id="chips" aria-label="Filter by category">
+    <button class="chip chip-search" type="button" id="search-toggle" aria-expanded="false"
+            aria-controls="search-wrap" aria-label="Search the menu">${ICON_SEARCH}</button>
+    <div class="search-wrap" id="search-wrap">
+      <input class="search" id="q" type="search" placeholder="Wings, ribs, pap…" aria-label="Search the menu">
+      <button class="search-x" type="button" id="search-clear" aria-label="Clear search" hidden>✕</button>
+    </div>
     <button class="chip" type="button" data-cat="all" aria-pressed="true">All</button>
     ${cats
       .map((c, i) => `<button class="chip" type="button" data-cat="${i}" aria-pressed="false">${esc(c.name)}</button>`)
       .join('')}
   </nav>`
-      : '';
+    : '';
 
   // The review form URL is built from the Place ID alone -- no API, no OAuth, no approval. When a
   // restaurant has no Place ID yet, the CTA is simply absent rather than pointing at a broken
@@ -497,6 +722,7 @@ function renderPage({ restaurant, menu }) {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500&family=Jost:wght@300;400&display=swap">
 <style>${STYLE_MIN}</style>
+<script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
 </head>
 <body data-slug="${esc(restaurant.slug)}"
       data-hours="${esc(JSON.stringify(restaurant.hours || null))}"
@@ -505,27 +731,27 @@ function renderPage({ restaurant, menu }) {
 <header>
   <div class="head-row">
     <h1>${esc(restaurant.name)}</h1>
-    <button class="burger" type="button" id="open-sheet" aria-label="More options" aria-haspopup="true">☰</button>
+    <div class="head-actions">
+      <button class="theme-toggle" type="button" id="theme-toggle" aria-label="Switch theme">${ICON_MOON}</button>
+      <button class="burger" type="button" id="open-sheet" aria-label="More options" aria-haspopup="true">☰</button>
+    </div>
   </div>
   <p class="sub">Menu</p>
-  <p class="hours-badge" id="hours-badge" hidden></p>
-  <input class="search" id="q" type="search" placeholder="Wings, ribs, pap…" aria-label="Search the menu">
-  ${chips}
 </header>
-
+${chips}
 ${sections || '<p class="empty">This menu is being set up.</p>'}
-<p class="empty" id="no-hits" hidden>Nothing on the menu matches that.</p>
+${hasFilters ? '<p class="empty" id="no-hits" hidden>Nothing on the menu matches that.</p>' : ''}
 
 <footer>
-  ${
-    serviceEnabled
-      ? `<div class="service-row">
-    <button class="service-btn" type="button" data-kind="waiter"><span class="label">Call waiter</span></button>
-    <button class="service-btn" type="button" data-kind="bill"><span class="label">Request bill</span></button>
-  </div>`
-      : ''
-  }
-  <button class="visit-cta" type="button" id="open-visit">How was your visit?</button>
+  <div class="cta-row">
+    ${
+      serviceEnabled
+        ? `<button class="cta-btn" type="button" data-kind="waiter">${ICON_BELL}<span class="label">Call waiter</span></button>
+    <button class="cta-btn" type="button" data-kind="bill">${ICON_RECEIPT}<span class="label">Request bill</span></button>`
+        : ''
+    }
+    <button class="cta-btn" type="button" id="open-visit"><span class="cta-star" aria-hidden="true">★</span><span class="label">Rate us</span></button>
+  </div>
 </footer>
 
 ${
@@ -593,29 +819,64 @@ ${
   <button class="close" type="button" id="close-sheet" aria-label="Close">✕</button>
   <div>
     <p class="sub" id="sheet-h">More</p>
-    <nav class="sheet-list">
-      ${
-        hasInfo
-          ? `<button class="sheet-row" type="button" id="open-info">
-        <span>Hours &amp; Address</span><span class="chev">›</span>
-      </button>`
-          : ''
-      }
-      <button class="sheet-row" type="button" id="share-menu">
-        <span>Share Menu</span><span class="chev">›</span>
-      </button>
-      ${
-        serviceEnabled
-          ? `<button class="sheet-row" type="button" data-kind="waiter">
-        <span class="label">Call waiter</span><span class="chev">›</span>
-      </button>
-      <button class="sheet-row" type="button" data-kind="bill">
-        <span class="label">Request bill</span><span class="chev">›</span>
-      </button>`
-          : ''
-      }
-    </nav>
+    ${
+      serviceEnabled
+        ? `<section class="sheet-group" aria-labelledby="sheet-g-table">
+      <h3 class="sheet-group-label" id="sheet-g-table">At your table</h3>
+      <div class="sheet-card">
+        <button class="sheet-row" type="button" data-kind="waiter">
+          <span class="sheet-row-icon sheet-row-icon--accent">${ICON_BELL}</span>
+          <span class="sheet-row-text"><span class="sheet-row-title label">Call waiter</span><span class="sheet-row-subtitle">Someone comes to your table</span></span>
+          <span class="chev">›</span>
+        </button>
+        <div class="sheet-divider"></div>
+        <button class="sheet-row" type="button" data-kind="bill">
+          <span class="sheet-row-icon sheet-row-icon--accent">${ICON_RECEIPT}</span>
+          <span class="sheet-row-text"><span class="sheet-row-title label">Request bill</span><span class="sheet-row-subtitle">Card, cash or split</span></span>
+          <span class="chev">›</span>
+        </button>
+      </div>
+    </section>`
+        : ''
+    }
+    <section class="sheet-group" aria-labelledby="sheet-g-restaurant">
+      <h3 class="sheet-group-label" id="sheet-g-restaurant">The restaurant</h3>
+      <div class="sheet-card">
+        ${
+          hasInfo
+            ? `<button class="sheet-row" type="button" id="open-info">
+          <span class="sheet-row-icon">${ICON_CLOCK}</span>
+          <span class="sheet-row-text"><span class="sheet-row-title">Hours &amp; Address</span><span class="sheet-row-subtitle hours-badge" id="sheet-hours-badge" hidden></span></span>
+          <span class="chev">›</span>
+        </button>
+        <div class="sheet-divider"></div>`
+            : ''
+        }
+        <button class="sheet-row" type="button" id="share-menu">
+          <span class="sheet-row-icon">${ICON_SHARE}</span>
+          <span class="sheet-row-text"><span class="sheet-row-title">Share Menu</span><span class="sheet-row-subtitle">Send the menu link to someone</span></span>
+          <span class="chev">›</span>
+        </button>
+        <div class="sheet-divider"></div>
+        <button class="sheet-row" type="button" id="open-suggest">
+          <span class="sheet-row-icon">${ICON_BULB}</span>
+          <span class="sheet-row-text"><span class="sheet-row-title">Suggestions</span><span class="sheet-row-subtitle">Goes straight to the owner</span></span>
+          <span class="chev">›</span>
+        </button>
+      </div>
+    </section>
     <p class="copied" id="share-copied" hidden>Link copied</p>
+  </div>
+</div>
+
+<div class="overlay" id="suggest" hidden role="dialog" aria-modal="true" aria-labelledby="suggest-h">
+  <button class="close" type="button" id="close-suggest" aria-label="Close">✕</button>
+  <div>
+    <h2 id="suggest-h">Got an idea?</h2>
+    <p id="suggest-body">Menu suggestions, service ideas, anything — straight to the owner.</p>
+    <textarea class="field" id="suggest-input" rows="4" placeholder="Tell us what you'd change"
+              aria-label="Your suggestion"></textarea>
+    <button class="btn" type="button" id="suggest-send" disabled>Send</button>
   </div>
 </div>
 
@@ -684,73 +945,116 @@ ${
     });
   });
 
-  // Item ratings save on the tap itself. A diner who rates two dishes and then closes the tab
-  // still gave us two ratings -- which on a restaurant table is the normal case, not the edge.
+  // The star tap itself still saves the rating alone, optimistically -- a diner who rates two
+  // dishes and then closes the tab still gave us two ratings, which on a restaurant table is the
+  // normal case, not the edge. The Confirm button that morphs in below is what saves a note: an
+  // input with no visible "done" action is easy to type into and never actually submit.
   document.querySelectorAll('.faces[data-item]').forEach(function(group){
-    var note = group.parentNode.querySelector('.note');
+    var rate = group.closest('.rate');
+    var note = rate.querySelector('.note');
+    var confirmWrap = rate.querySelector('.confirm-wrap');
+    var confirmBtn = rate.querySelector('.confirm-btn');
+
     group.addEventListener('click', function(e){
       var btn = e.target.closest('.face');
       if(!btn) return;
       var rating = Number(btn.dataset.r);
       select(group, rating);          // optimistic: the tap reads as instant on bad signal
       post('/item-rating', { itemId: group.dataset.item, rating: rating });
+      confirmWrap.hidden = false;     // morphs in -- there is now something to confirm
     });
-    note.addEventListener('change', function(){
-      if(!group.classList.contains('done')) return;
+
+    confirmBtn.addEventListener('click', function(){
+      confirmBtn.disabled = true;
       post('/item-rating', {
         itemId: group.dataset.item,
         rating: Number(group.dataset.rating),
         comment: note.value
+      }).catch(function(){}).then(function(){
+        confirmBtn.textContent = 'Saved ✓';
+        confirmBtn.classList.add('sent');
+        replay(confirmBtn, 'pop');
       });
     });
   });
 
   // Menu search and category chips, client side. No request and no index -- the whole menu is
   // already in the document, and on restaurant wifi a round trip per keystroke would be the
-  // slowest thing here.
+  // slowest thing here. The whole block is skipped on a single-category menu, which ships no rail.
   //
-  // One pass applies both, because they compose: the chip narrows to a category and the search
-  // narrows within whatever the chip left standing. Two independent handlers each setting
+  // One pass applies both filters, because they compose: the chip narrows to a category and the
+  // search narrows within whatever the chip left standing. Two independent handlers each setting
   // hidden would fight over the same attribute and the last one to run would win.
-  var q = document.getElementById('q');
-  var noHits = document.getElementById('no-hits');
-  var chips = document.querySelectorAll('.chip');
-  var cat = 'all';
+  var rail = document.getElementById('chips');
+  if(rail){
+    var q = document.getElementById('q');
+    var clearBtn = document.getElementById('search-clear');
+    var toggle = document.getElementById('search-toggle');
+    var noHits = document.getElementById('no-hits');
+    var chips = rail.querySelectorAll('.chip[data-cat]');
+    var cat = 'all';
 
-  function apply(){
-    var term = q.value.trim().toLowerCase();
-    var hits = 0;
-    document.querySelectorAll('section').forEach(function(sec){
-      var inCat = cat === 'all' || sec.dataset.cat === cat;
-      var shown = 0;
-      sec.querySelectorAll('.item').forEach(function(el){
-        var hit = inCat && (!term || el.dataset.name.indexOf(term) > -1);
-        el.hidden = !hit;
-        if(hit) shown++;
+    function apply(){
+      var term = q.value.trim().toLowerCase();
+      var hits = 0;
+      var firstVisible = null;
+      document.querySelectorAll('section').forEach(function(sec){
+        var inCat = cat === 'all' || sec.dataset.cat === cat;
+        var shown = 0;
+        sec.querySelectorAll('.item').forEach(function(el){
+          var hit = inCat && (!term || el.dataset.name.indexOf(term) > -1);
+          el.hidden = !hit;
+          if(hit) shown++;
+        });
+        // A category whose dishes are all filtered out hides its heading too, otherwise the page
+        // reads as a list of empty sections.
+        sec.hidden = !shown;
+        if(shown && !firstVisible) firstVisible = sec;
+        hits += shown;
       });
-      // A category whose dishes are all filtered out hides its heading too, otherwise the page
-      // reads as a list of empty sections.
-      sec.hidden = !shown;
-      hits += shown;
-    });
-    // Only a real miss earns the message. A chip on its own always has dishes behind it, so
-    // "nothing matches" would be a lie the moment someone taps Desserts.
-    noHits.hidden = hits > 0 || (!term && cat === 'all');
-  }
+      // The zero-top-padding treatment follows whichever section is actually topmost, not just
+      // the one that happened to render first -- see .cat-top in the CSS above for why.
+      document.querySelectorAll('section').forEach(function(sec){
+        sec.classList.toggle('cat-top', sec === firstVisible);
+      });
+      // Only a real miss earns the message. A chip on its own always has dishes behind it, so
+      // "nothing matches" would be a lie the moment someone taps Desserts.
+      noHits.hidden = hits > 0 || (!term && cat === 'all');
+      // The X is for clearing text, so it exists only once there is text to clear.
+      clearBtn.hidden = !q.value;
+    }
 
-  q.addEventListener('input', apply);
+    q.addEventListener('input', apply);
 
-  chips.forEach(function(chip){
-    chip.addEventListener('click', function(){
-      cat = chip.dataset.cat;
-      chips.forEach(function(c){ c.setAttribute('aria-pressed', c === chip ? 'true' : 'false'); });
+    // Collapsing discards the term rather than keeping it filtering invisibly -- a menu still
+    // filtered by a search box the diner can no longer see reads as a broken menu.
+    toggle.addEventListener('click', function(){
+      var open = rail.toggleAttribute('data-searching');
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if(open) return q.focus();
+      q.value = '';
+      q.blur();
       apply();
-      // Tapping Desserts from halfway down the mains is a request to see desserts, not to stay at
-      // the same offset in a page that just got shorter. No behavior option, so CSS
-      // scroll-behavior stays in charge and prefers-reduced-motion still wins.
-      window.scrollTo({ top: 0 });
     });
-  });
+
+    clearBtn.addEventListener('click', function(){
+      q.value = '';
+      apply();
+      q.focus();   // clearing is mid-typing, so the keyboard should stay up
+    });
+
+    chips.forEach(function(chip){
+      chip.addEventListener('click', function(){
+        cat = chip.dataset.cat;
+        chips.forEach(function(c){ c.setAttribute('aria-pressed', c === chip ? 'true' : 'false'); });
+        apply();
+        // Tapping Desserts from halfway down the mains is a request to see desserts, not to stay
+        // at the same offset in a page that just got shorter. No behavior option, so CSS
+        // scroll-behavior stays in charge and prefers-reduced-motion still wins.
+        window.scrollTo({ top: 0 });
+      });
+    });
+  }
 
   // Burger sheet, info modal, and the open/closed badge. status() is lib/hours.js's own function,
   // inlined here via toString() so there is exactly one implementation of the open/closed math --
@@ -760,10 +1064,10 @@ ${
 
   ${status.toString()}
 
-  // One status() call feeds both badges (header + modal) and the "today" row highlight, so all
-  // three can never disagree about what moment they are describing. closedNote suppresses the
-  // badge entirely -- a confident "Open now" on a day the owner has flagged as an exception is
-  // worse than showing nothing.
+  // One status() call feeds the modal badge and the "today" row highlight, so the two can never
+  // disagree about what moment they are describing. closedNote suppresses the badge entirely --
+  // a confident "Open now" on a day the owner has flagged as an exception is worse than showing
+  // nothing.
   var hoursStatus = (!closedNote && hours) ? status(hours, new Date()) : null;
 
   function applyBadge(el){
@@ -775,13 +1079,29 @@ ${
     el.dataset.state = hoursStatus.state;
     el.hidden = false;
   }
-  applyBadge(document.getElementById('hours-badge'));
+
+  // Section hours -- same status() call, run again per section against that section's own
+  // schedule. Sections render in their normal state by default (see renderPage) so there is no
+  // flash of "unavailable" for the common case of a section that IS in its window right now; this
+  // only ever downgrades a section, never the reverse.
+  document.querySelectorAll('section[data-hours]').forEach(function(sec){
+    var secHours = JSON.parse(sec.dataset.hours || 'null');
+    if(!secHours) return;
+    var st = status(secHours, new Date());
+    if(st.state === 'closed'){
+      sec.classList.add('cat-paused');
+      var note = sec.querySelector('.cat-note');
+      note.textContent = st.until ? ('· Available from ' + st.until) : '· Not available right now';
+      note.hidden = false;
+    }
+  });
 
   var sheet = document.getElementById('sheet');
   var info = document.getElementById('info');
 
   if(info){
     applyBadge(document.getElementById('info-badge'));
+    applyBadge(document.getElementById('sheet-hours-badge'));
     if(hoursStatus){
       var todayRow = info.querySelector('.hours-row[data-day="' + hoursStatus.day + '"]');
       if(todayRow) todayRow.classList.add('today');
@@ -790,6 +1110,36 @@ ${
 
   document.getElementById('open-sheet').onclick = function(){ sheet.hidden = false; };
   document.getElementById('close-sheet').onclick = function(){ sheet.hidden = true; };
+
+  // Theme toggle. The head script (see <head> above) already applied any stored choice before
+  // first paint, so this only has to keep the icon in sync and handle the click -- it never has to
+  // fix a flash. No stored choice means "follow the system", same as before this feature existed.
+  (function(){
+    var ICON_SUN = ${JSON.stringify(ICON_SUN)};
+    var ICON_MOON = ${JSON.stringify(ICON_MOON)};
+    var root = document.documentElement;
+    var btn = document.getElementById('theme-toggle');
+    var media = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+
+    function current(){
+      var stored = root.dataset.theme;
+      if(stored === 'light' || stored === 'dark') return stored;
+      return media && media.matches ? 'dark' : 'light';
+    }
+    function paint(){
+      var mode = current();
+      btn.innerHTML = mode === 'dark' ? ICON_SUN : ICON_MOON;
+      btn.setAttribute('aria-label', mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
+    }
+
+    btn.onclick = function(){
+      var next = current() === 'dark' ? 'light' : 'dark';
+      root.dataset.theme = next;
+      try { localStorage.setItem('theme', next); } catch(e){}
+      paint();
+    };
+    paint();
+  })();
 
   var openInfo = document.getElementById('open-info');
   if(openInfo){
@@ -814,6 +1164,52 @@ ${
       });
     }
   };
+
+  // Suggestions. Deliberately no star rating -- see /api/public/:slug/suggestion, which is the
+  // one place a comment can land on a visit row without one. The modal thanks inline and closes
+  // itself rather than routing through #thanks, which is tuned for a visit rating (Google review
+  // CTA and all) and has nothing to say about a menu idea.
+  (function(){
+    var suggest = document.getElementById('suggest');
+    var input = document.getElementById('suggest-input');
+    var send = document.getElementById('suggest-send');
+    var title = document.getElementById('suggest-h');
+    var body = document.getElementById('suggest-body');
+    var titleText = title.textContent;
+    var bodyText = body.textContent;
+    var busy = false;
+
+    document.getElementById('open-suggest').onclick = function(){
+      sheet.hidden = true;
+      suggest.hidden = false;
+    };
+    document.getElementById('close-suggest').onclick = function(){ suggest.hidden = true; };
+
+    input.addEventListener('input', function(){ send.disabled = !input.value.trim(); });
+
+    send.onclick = function(){
+      var comment = input.value.trim();
+      if(!comment || busy) return;
+      busy = true;
+      send.disabled = true;
+      post('/suggestion', { comment: comment }).catch(function(){}).then(function(){
+        busy = false;
+        input.hidden = true;
+        send.hidden = true;
+        title.textContent = 'Thanks — that’s been passed on.';
+        body.textContent = 'The owner will see it next time they check in.';
+        setTimeout(function(){
+          suggest.hidden = true;
+          input.hidden = false;
+          send.hidden = false;
+          input.value = '';
+          send.disabled = true;
+          title.textContent = titleText;
+          body.textContent = bodyText;
+        }, 1600);
+      });
+    };
+  })();
 
   // Call waiter / Request bill. Reachable from two places -- the footer pill and, if the sheet has
   // it, the burger sheet row -- sharing one data-kind attribute so both stay in sync. serviceBtns

@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { Button } from './Button';
 
@@ -9,6 +9,7 @@ export function ConfirmDialog({ open, onOpenChange, title, description, confirmL
   if (open) last.current = { title, description };
 
   const shown = open ? { title, description } : last.current;
+  const [busy, setBusy] = useState(false);
 
   return (
     <AlertDialog.Root open={open} onOpenChange={onOpenChange}>
@@ -23,10 +24,27 @@ export function ConfirmDialog({ open, onOpenChange, title, description, confirmL
           )}
           <div className="mt-5 flex justify-end gap-2">
             <AlertDialog.Cancel asChild>
-              <Button variant="secondary">Cancel</Button>
+              <Button variant="secondary" disabled={busy} title="Cancel">Cancel</Button>
             </AlertDialog.Cancel>
             <AlertDialog.Action asChild>
-              <Button variant={destructive ? 'destructive' : 'primary'} onClick={onConfirm}>
+              <Button
+                variant={destructive ? 'destructive' : 'primary'}
+                loading={busy}
+                title={confirmLabel}
+                // preventDefault so Radix doesn't close the dialog the instant this fires --
+                // it otherwise treats Action as a synchronous "close on click", which for an
+                // awaited onConfirm meant the dialog was already gone before the delete
+                // actually finished (or failed).
+                onClick={async (e) => {
+                  e.preventDefault();
+                  setBusy(true);
+                  try {
+                    await onConfirm();
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
                 {confirmLabel}
               </Button>
             </AlertDialog.Action>

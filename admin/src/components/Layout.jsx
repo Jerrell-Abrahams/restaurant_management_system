@@ -63,12 +63,13 @@ export function Layout() {
           <>
             <div className="truncate font-serif text-[17px] font-semibold text-text">{restaurant.name}</div>
             <a
-              className="mt-0.5 inline-flex items-center gap-1 font-mono text-[10.5px] text-dim hover:text-muted"
+              className="mt-1 inline-flex items-center gap-1.5 rounded-md border border-border-2 px-2 py-1 text-[11px] text-muted transition-colors hover:border-accent hover:text-accent"
               href={restaurant.qr_target_url}
               target="_blank"
               rel="noopener"
+              title="Open the live menu diners see"
             >
-              /{restaurant.slug} <ExternalLink size={10} />
+              <ExternalLink size={11} className="flex-none" />View Menu
             </a>
           </>
         ) : (
@@ -105,9 +106,9 @@ export function Layout() {
         {others.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="min-w-0 flex-1 justify-between">
+              <Button variant="ghost" className="min-w-0 flex-1 justify-between" title="Switch restaurant">
                 <span className="truncate">Switch</span>
-                <ChevronsUpDown size={13} />
+                <ChevronsUpDown />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
@@ -119,11 +120,11 @@ export function Layout() {
             </DropdownMenuContent>
           </DropdownMenu>
         )}
-        <IconButton onClick={toggleTheme} aria-label="Toggle theme">
-          {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+        <IconButton onClick={toggleTheme} aria-label="Toggle theme" title="Toggle theme">
+          {theme === 'dark' ? <Sun /> : <Moon />}
         </IconButton>
-        <IconButton onClick={logout} aria-label="Log out">
-          <LogOut size={14} />
+        <IconButton onClick={logout} aria-label="Log out" title="Log out">
+          <LogOut />
         </IconButton>
       </div>
     </div>
@@ -135,14 +136,14 @@ export function Layout() {
 
       {/* Mobile: the console is genuinely used on a phone by an owner standing in their kitchen. */}
       <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-bg px-4 py-3 lg:hidden">
-        <IconButton onClick={() => setDrawer(true)} aria-label="Open menu">
-          <MenuIcon size={14} />
+        <IconButton onClick={() => setDrawer(true)} aria-label="Open menu" title="Open menu">
+          <MenuIcon />
         </IconButton>
         <span className="truncate font-serif text-[15px] font-semibold">{restaurant?.name || ''}</span>
       </header>
       {drawer && (
         <div className="fixed inset-0 z-30 lg:hidden">
-          <button className="absolute inset-0 bg-black/60" onClick={() => setDrawer(false)} aria-label="Close menu" />
+          <button className="absolute inset-0 bg-black/60" onClick={() => setDrawer(false)} aria-label="Close menu" title="Close menu" />
           <div className="absolute inset-y-0 left-0 w-64 animate-drawer-in border-r border-border bg-panel">{sidebar}</div>
         </div>
       )}

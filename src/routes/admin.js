@@ -9,6 +9,8 @@ const { summarize, leaderboards, MIN_RATINGS } = require('../lib/dishes');
 const { summarizeOverview } = require('../lib/overview');
 const qr = require('../lib/qr');
 const { hoursError } = require('../lib/hours');
+const { allergensError, dietError, spiceLevelOf } = require('../lib/dietary');
+const { promoLabelError } = require('../lib/promotions');
 
 const router = express.Router();
 router.use(auth);
@@ -189,7 +191,24 @@ router.get('/restaurants/:id/menu', async (req, res) => {
     ? await db.from('menu_items').select('*').in('category_id', ids).order('position')
     : { data: [] };
 
-  res.json(categories.map((c) => ({ ...c, items: items.filter((i) => i.category_id === c.id) })));
+  // Rating count next to each name in the editor -- popularity at a glance while managing the
+  // menu. The same raw count diners see on the live page (routes/public.js), not the
+  // honesty-gated average lib/dishes.js computes for the Dishes page.
+  const itemIds = items.map((i) => i.id);
+  const { data: ratingRows } = itemIds.length
+    ? await db.from('item_ratings').select('menu_item_id').in('menu_item_id', itemIds)
+    : { data: [] };
+  const ratingCounts = new Map();
+  (ratingRows || []).forEach((r) => ratingCounts.set(r.menu_item_id, (ratingCounts.get(r.menu_item_id) || 0) + 1));
+
+  res.json(
+    categories.map((c) => ({
+      ...c,
+      items: items
+        .filter((i) => i.category_id === c.id)
+        .map((i) => ({ ...i, rating_count: ratingCounts.get(i.id) || 0 })),
+    }))
+  );
 });
 
 router.post('/restaurants/:id/categories', async (req, res) => {
@@ -217,6 +236,11 @@ router.patch('/restaurants/:id/categories/:categoryId', async (req, res) => {
   const patch = {};
   if ('name' in req.body) patch.name = req.body.name;
   if ('position' in req.body) patch.position = Number(req.body.position) || 0;
+  if ('hours' in req.body) {
+    const problem = hoursError(req.body.hours);
+    if (problem) return res.status(400).json({ error: problem });
+    patch.hours = req.body.hours;
+  }
 
   // Scoped by restaurant_id as well as id: without that second filter, a valid category id
   // belonging to another restaurant would be editable by anyone who could guess it.
@@ -275,7 +299,7 @@ router.post('/restaurants/:id/items', async (req, res) => {
   const ctx = await resolve(req, res, { write: true });
   if (!ctx) return;
 
-  const { categoryId, name, description, price, position } = req.body;
+  const { categoryId, name, description, price, position, spiceLevel, diet, allergens, promoLabel } = req.body;
   if (!categoryId || !name) return res.status(400).json({ error: 'categoryId and name are required' });
 
   const owned = await ownCategoryIds(ctx.restaurant.id);
@@ -286,6 +310,13 @@ router.post('/restaurants/:id/items', async (req, res) => {
   // a legitimate menu state -- collapsing the two would put a free dish on the menu.
   if (Number.isNaN(cents)) return res.status(400).json({ error: 'price is not a valid amount' });
 
+  const dietErr = dietError(diet);
+  if (dietErr) return res.status(400).json({ error: dietErr });
+  const allergensErr = allergensError(allergens);
+  if (allergensErr) return res.status(400).json({ error: allergensErr });
+  const promoErr = promoLabelError(promoLabel);
+  if (promoErr) return res.status(400).json({ error: promoErr });
+
   const { data, error } = await db
     .from('menu_items')
     .insert({
@@ -294,6 +325,10 @@ router.post('/restaurants/:id/items', async (req, res) => {
       description: description || null,
       price_cents: cents,
       position: Number(position) || 0,
+      spice_level: spiceLevelOf(spiceLevel),
+      diet: diet || null,
+      allergens: allergens || [],
+      promo_label: promoLabel || null,
     })
     .select()
     .single();
@@ -319,6 +354,22 @@ router.patch('/restaurants/:id/items/:itemId', async (req, res) => {
     patch.price_cents = cents;
   }
   if ('categoryId' in req.body) patch.category_id = req.body.categoryId;
+  if ('spiceLevel' in req.body) patch.spice_level = spiceLevelOf(req.body.spiceLevel);
+  if ('diet' in req.body) {
+    const dietErr = dietError(req.body.diet);
+    if (dietErr) return res.status(400).json({ error: dietErr });
+    patch.diet = req.body.diet || null;
+  }
+  if ('allergens' in req.body) {
+    const allergensErr = allergensError(req.body.allergens);
+    if (allergensErr) return res.status(400).json({ error: allergensErr });
+    patch.allergens = req.body.allergens;
+  }
+  if ('promoLabel' in req.body) {
+    const promoErr = promoLabelError(req.body.promoLabel);
+    if (promoErr) return res.status(400).json({ error: promoErr });
+    patch.promo_label = req.body.promoLabel || null;
+  }
 
   const owned = await ownCategoryIds(ctx.restaurant.id);
   if (patch.category_id && !owned.includes(patch.category_id)) {

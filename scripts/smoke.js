@@ -211,7 +211,7 @@ const api = (token) => async (method, path, body) => {
   // edge, and a stylesheet built from repeated tokens compresses hard -- the raw string is
   // roughly 3-4x this. Asserting on the uncompressed length measured an axis no diner pays for.
   //
-  // 14KB, not 10KB: search, category chips, the burger sheet, the info modal and the open/closed
+  // 14KB, not 10KB: category chips, the burger sheet, the info modal and the open/closed
   // badge (with lib/hours.js's status() inlined via toString()) are now fixed page chrome that
   // ships regardless of menu size -- roughly 9.5-10KB gzipped on their own, before a single dish
   // is added. This budget was raised here, deliberately, to fit that; it is not a hunt for a

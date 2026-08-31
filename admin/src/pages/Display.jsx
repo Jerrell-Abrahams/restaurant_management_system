@@ -189,11 +189,11 @@ export function Display() {
           {new Date().toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })}
         </span>
         <div className="flex gap-2">
-          <IconButton onClick={toggleMute} aria-label={muted ? 'Unmute chime' : 'Mute chime'}>
-            {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+          <IconButton onClick={toggleMute} aria-label={muted ? 'Unmute chime' : 'Mute chime'} title={muted ? 'Unmute chime' : 'Mute chime'}>
+            {muted ? <VolumeX /> : <Volume2 />}
           </IconButton>
-          <IconButton onClick={() => document.documentElement.requestFullscreen?.()} aria-label="Fullscreen">
-            <Maximize size={16} />
+          <IconButton onClick={() => document.documentElement.requestFullscreen?.()} aria-label="Fullscreen" title="Fullscreen">
+            <Maximize />
           </IconButton>
         </div>
       </header>
@@ -249,6 +249,7 @@ function RequestCard({ row, urgent, onAck }) {
       <button
         onClick={onAck}
         className="flex animate-pulse-ring flex-col rounded-2xl bg-accent p-6 text-left text-accent-ink"
+        title={`Acknowledge table ${row.table_label}`}
       >
         <div className="flex items-center justify-between">
           <span className="font-mono text-[12px] uppercase tracking-[0.14em] opacity-85">{label}</span>
@@ -265,6 +266,7 @@ function RequestCard({ row, urgent, onAck }) {
     <button
       onClick={onAck}
       className={cn('flex flex-col rounded-2xl border p-6 text-left', isBill ? 'border-border-2 bg-panel' : 'border-border bg-raised')}
+      title={`Acknowledge table ${row.table_label}`}
     >
       <div className="flex items-center justify-between">
         <span className={cn('font-mono text-[12px] uppercase tracking-[0.14em]', isBill ? 'text-ok' : 'text-accent')}>{label}</span>

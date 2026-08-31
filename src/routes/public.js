@@ -86,6 +86,15 @@ const ratingOf = (value) => {
   return Number.isInteger(n) && n >= 1 && n <= 5 ? n : null;
 };
 
+// /visit-rating and /suggestion both write to the same visit row's one `comment` column -- a
+// diner can reach both in one sitting (rv cookie), so the second write must not silently erase
+// the first. A blank addition is a no-op rather than a clear.
+function appendComment(existing, addition) {
+  if (!addition) return existing || null;
+  if (!existing) return addition;
+  return `${existing}\n\n${addition}`;
+}
+
 // --- The menu itself ---------------------------------------------------------------------
 
 // Deliberately served whatever the subscription says. A coaster is printed physical media sitting
@@ -191,17 +200,38 @@ router.post('/api/public/:slug/visit-rating', async (req, res) => {
   // 3 or below, and a client-side check is a suggestion -- this is the rule.
   const contact = rating <= 3 ? (req.body.contact || '').trim().slice(0, 200) || null : null;
 
+  const { data: existing } = await db.from('visits').select('comment').eq('id', visitId).maybeSingle();
+  const comment = appendComment(existing?.comment, (req.body.comment || '').trim() || null);
+
   const { error } = await db
     .from('visits')
-    .update({
-      rating,
-      comment: (req.body.comment || '').trim() || null,
-      contact,
-    })
+    .update({ rating, comment, contact })
     .eq('id', visitId);
   if (error) return res.status(500).json({ error: error.message });
 
   if (rating <= (ctx.restaurant.alert_threshold ?? 3)) await fireAlert(ctx.restaurant.id);
+  res.json({ ok: true });
+});
+
+// The one route that can put a comment on a visit with no rating. That absence is the signal
+// admin/src/pages/Feedback.jsx uses to badge a row "Suggestion" instead of a rated visit -- no
+// rating means no severity, so this never calls fireAlert.
+router.post('/api/public/:slug/suggestion', async (req, res) => {
+  const ctx = await bySlug(req.params.slug);
+  if (!ctx) return res.status(404).json({ error: 'Not found' });
+
+  const comment = (req.body.comment || '').trim();
+  if (!comment) return res.status(400).json({ error: 'comment is required' });
+
+  const visitId = await currentVisit(req, res, ctx.restaurant.id);
+  if (!visitId) return res.status(500).json({ error: 'Could not start a visit' });
+
+  const { data: existing } = await db.from('visits').select('comment').eq('id', visitId).maybeSingle();
+  const merged = appendComment(existing?.comment, comment);
+
+  const { error } = await db.from('visits').update({ comment: merged }).eq('id', visitId);
+  if (error) return res.status(500).json({ error: error.message });
+
   res.json({ ok: true });
 });
 

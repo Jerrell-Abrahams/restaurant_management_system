@@ -1,5 +1,5 @@
 import * as RadixSelect from '@radix-ui/react-select';
-import { Check, ChevronDown } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from './cn';
 
 export function Select({ value, onValueChange, placeholder, children, className, disabled }) {
@@ -29,7 +29,16 @@ export function Select({ value, onValueChange, placeholder, children, className,
             'data-[state=open]:animate-menu-in data-[state=closed]:animate-menu-out'
           )}
         >
-          <RadixSelect.Viewport className="max-h-[var(--radix-select-content-available-height)] p-1">{children}</RadixSelect.Viewport>
+          {/* Up/down affordance for lists that outgrow the viewport (e.g. TimeSelect's 97 slots) --
+              Radix only renders these when the content actually overflows, so short lists like
+              Diet/Promotion are unaffected. */}
+          <RadixSelect.ScrollUpButton className="flex items-center justify-center py-1 text-dim">
+            <ChevronUp size={14} />
+          </RadixSelect.ScrollUpButton>
+          <RadixSelect.Viewport className="max-h-[var(--radix-select-content-available-height)] overflow-y-auto p-1">{children}</RadixSelect.Viewport>
+          <RadixSelect.ScrollDownButton className="flex items-center justify-center py-1 text-dim">
+            <ChevronDown size={14} />
+          </RadixSelect.ScrollDownButton>
         </RadixSelect.Content>
       </RadixSelect.Portal>
     </RadixSelect.Root>

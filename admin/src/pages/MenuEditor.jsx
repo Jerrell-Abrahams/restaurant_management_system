@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Plus, Trash2, Archive, RotateCcw, GripVertical } from 'lucide-react';
+import { Plus, Trash2, Archive, RotateCcw, GripVertical, Flame } from 'lucide-react';
 import { toast } from 'sonner';
 import * as api from '../api';
 import { Button, IconButton } from '../components/ui/Button';
@@ -8,10 +8,24 @@ import { Card, CardHeader, CardTitle } from '../components/ui/Card';
 import { Input, Field } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { Select, SelectItem } from '../components/ui/Select';
 import { Skeleton } from '../components/ui/Skeleton';
 import { cn } from '../components/ui/cn';
+import { HoursEditor, isPaused } from '../components/HoursEditor';
+import { ALLERGENS, ALLERGEN_LABELS } from '../lib/dietary';
 
 const rands = (cents) => (cents === null || cents === undefined ? '' : `R${(cents / 100).toFixed(2)}`);
+const DIET_LABEL = { vegetarian: 'VEG', vegan: 'VEGAN' };
+// Same six values src/lib/promotions.js validates server-side -- kept in sync by convention, same
+// as Settings.jsx's DAY_KEYS, since the admin console and the server are separate deployables.
+const PROMO_LABEL_TEXT = {
+  best_seller: 'Best Seller',
+  popular: 'Popular',
+  new: 'New',
+  special: 'Special',
+  limited_time: 'Limited Time',
+  chefs_choice: "Chef's Choice",
+};
 
 export function MenuEditor() {
   const { restaurantId } = useOutletContext();
@@ -20,7 +34,10 @@ export function MenuEditor() {
   const [catModal, setCatModal] = useState(null); // { id?, name }
   const [itemModal, setItemModal] = useState(null); // { categoryId, id?, ... }
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [catSaving, setCatSaving] = useState(false);
+  const [itemSaving, setItemSaving] = useState(false);
   const [dragging, setDragging] = useState(null); // { categoryId, index }
+  const [catDragging, setCatDragging] = useState(null); // index of the section being dragged
 
   const load = useCallback(() => {
     api.getMenu(restaurantId).then(setMenu).catch((err) => toast.error(err.message));
@@ -57,6 +74,27 @@ export function MenuEditor() {
     }
   }
 
+  // Same live-reorder-then-persist-on-drop shape as reorderLocal/persistOrder above, one level up:
+  // sections reorder in the top-level `menu` array instead of a category's `items` array.
+  function reorderCatLocal(from, to) {
+    if (from === to) return;
+    setMenu((cur) => {
+      const cats = cur.slice();
+      cats.splice(to, 0, cats.splice(from, 1)[0]);
+      return cats;
+    });
+    setCatDragging(to);
+  }
+
+  async function persistCatOrder() {
+    try {
+      await Promise.all(menu.map((cat, idx) => api.updateCategory(restaurantId, cat.id, { position: idx })));
+    } catch (err) {
+      toast.error(err.message);
+      load();
+    }
+  }
+
   const run = async (fn, msg) => {
     try {
       await fn();
@@ -76,10 +114,10 @@ export function MenuEditor() {
       <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-serif text-[26px] font-medium tracking-[-0.015em]">Menu</h1>
         <div className="flex gap-2">
-          <Button variant="ghost" onClick={() => setShowArchived(!showArchived)}>
+          <Button variant="ghost" onClick={() => setShowArchived(!showArchived)} title={showArchived ? 'Hide archived dishes' : 'Show archived dishes'}>
             {showArchived ? 'Hide archived' : 'Show archived'}
           </Button>
-          <Button onClick={() => setCatModal({ name: '' })}><Plus size={13} /> Section</Button>
+          <Button onClick={() => setCatModal({ name: '' })} title="Add a new menu section"><Plus /> Section</Button>
         </div>
       </div>
       <p className="mb-5 font-mono text-[10.5px] text-dim">DRAG THE HANDLE TO REORDER · CHANGES ARE LIVE FOR DINERS</p>
@@ -91,23 +129,41 @@ export function MenuEditor() {
       )}
 
       <div className="flex flex-col gap-4">
-        {menu.map((cat) => {
+        {menu.map((cat, catIdx) => {
           const visibleItems = cat.items.filter((i) => showArchived || !i.archived_at);
           return (
-            <Card key={cat.id} className="p-0">
-              <CardHeader>
-                <button onClick={() => setCatModal({ id: cat.id, name: cat.name })} className="text-left">
-                  <CardTitle>{cat.name}</CardTitle>
-                </button>
+            <Card key={cat.id} className={cn('p-0', catDragging === catIdx && 'bg-raised')}>
+              <CardHeader
+                draggable
+                onDragStart={() => setCatDragging(catIdx)}
+                onDragEnter={() => catDragging !== null && reorderCatLocal(catDragging, catIdx)}
+                onDragOver={(e) => e.preventDefault()}
+                onDragEnd={() => {
+                  const wasDragging = catDragging !== null;
+                  setCatDragging(null);
+                  if (wasDragging) persistCatOrder();
+                }}
+                className="cursor-grab"
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <GripVertical size={14} className="shrink-0 text-dim" />
+                  <button onClick={() => setCatModal({ id: cat.id, name: cat.name, hours: cat.hours })} className="flex items-center gap-2 text-left" title={`Edit ${cat.name}`}>
+                    <CardTitle>{cat.name}</CardTitle>
+                    {isPaused(cat.hours) && (
+                      <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.08em] text-warn">Paused</span>
+                    )}
+                  </button>
+                </div>
                 <div className="flex gap-1.5">
-                  <Button variant="ghost" onClick={() => setItemModal({ categoryId: cat.id, name: '', description: '', price: '' })}>
-                    <Plus size={13} /> Dish
+                  <Button variant="ghost" onClick={() => setItemModal({ categoryId: cat.id, name: '', description: '', price: '' })} title={`Add a dish to ${cat.name}`}>
+                    <Plus /> Dish
                   </Button>
                   <IconButton
                     aria-label={`Delete ${cat.name}`}
+                    title={`Delete ${cat.name}`}
                     onClick={() => setConfirmDelete(cat)}
                   >
-                    <Trash2 size={13} />
+                    <Trash2 />
                   </IconButton>
                 </div>
               </CardHeader>
@@ -138,10 +194,35 @@ export function MenuEditor() {
                     <GripVertical size={14} className={cn('shrink-0 text-dim', !item.archived_at && 'cursor-grab')} />
                     <button
                       className="min-w-0 flex-1 text-left"
-                      onClick={() => setItemModal({ categoryId: cat.id, id: item.id, name: item.name, description: item.description || '', price: rands(item.price_cents) })}
+                      title={`Edit ${item.name}`}
+                      onClick={() =>
+                        setItemModal({
+                          categoryId: cat.id,
+                          id: item.id,
+                          name: item.name,
+                          description: item.description || '',
+                          price: rands(item.price_cents),
+                          spiceLevel: item.spice_level || 0,
+                          diet: item.diet || '',
+                          allergens: item.allergens || [],
+                          promoLabel: item.promo_label || '',
+                        })
+                      }
                     >
                       <div className="flex items-baseline gap-2">
                         <span className="truncate text-[13.5px] font-medium text-text">{item.name}</span>
+                        {PROMO_LABEL_TEXT[item.promo_label] && (
+                          <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.08em] text-accent">{PROMO_LABEL_TEXT[item.promo_label]}</span>
+                        )}
+                        {item.rating_count > 0 && (
+                          <span className="shrink-0 font-mono text-[10.5px] text-dim">{item.rating_count}★</span>
+                        )}
+                        {item.spice_level > 0 && (
+                          <span className="inline-flex shrink-0 items-center gap-px text-accent">{spiceIcons(item.spice_level, 11)}</span>
+                        )}
+                        {DIET_LABEL[item.diet] && (
+                          <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.08em] text-ok">{DIET_LABEL[item.diet]}</span>
+                        )}
                         {!item.available && !item.archived_at && (
                           <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.08em] text-warn">sold out</span>
                         )}
@@ -160,6 +241,7 @@ export function MenuEditor() {
                       <Button
                         variant={item.available ? 'ghost' : 'secondary'}
                         className="shrink-0"
+                        title={item.available ? `Mark ${item.name} sold out` : `Mark ${item.name} available`}
                         onClick={() => run(() => api.updateItem(restaurantId, item.id, { available: !item.available }), item.available ? `${item.name} marked sold out` : `${item.name} back on`)}
                       >
                         {item.available ? 'Available' : 'Sold out'}
@@ -168,9 +250,10 @@ export function MenuEditor() {
 
                     <IconButton
                       aria-label={item.archived_at ? 'Restore' : 'Archive'}
+                      title={item.archived_at ? `Restore ${item.name}` : `Archive ${item.name}`}
                       onClick={() => run(() => api.updateItem(restaurantId, item.id, { archived: !item.archived_at }), item.archived_at ? 'Restored' : 'Archived')}
                     >
-                      {item.archived_at ? <RotateCcw size={13} /> : <Archive size={13} />}
+                      {item.archived_at ? <RotateCcw /> : <Archive />}
                     </IconButton>
                   </div>
                   );
@@ -188,24 +271,32 @@ export function MenuEditor() {
 
       <CategoryModal
         state={catModal}
+        saving={catSaving}
         onClose={() => setCatModal(null)}
-        onSave={(name) =>
-          run(
-            () => (catModal.id ? api.updateCategory(restaurantId, catModal.id, { name }) : api.createCategory(restaurantId, { name, position: menu.length })),
+        onSave={async (body) => {
+          setCatSaving(true);
+          const ok = await run(
+            () => (catModal.id ? api.updateCategory(restaurantId, catModal.id, body) : api.createCategory(restaurantId, { name: body.name, position: menu.length })),
             'Section saved'
-          ).then((ok) => ok && setCatModal(null))
-        }
+          );
+          setCatSaving(false);
+          if (ok) setCatModal(null);
+        }}
       />
 
       <ItemModal
         state={itemModal}
+        saving={itemSaving}
         onClose={() => setItemModal(null)}
-        onSave={(body) =>
-          run(
+        onSave={async (body) => {
+          setItemSaving(true);
+          const ok = await run(
             () => (itemModal.id ? api.updateItem(restaurantId, itemModal.id, body) : api.createItem(restaurantId, { ...body, categoryId: itemModal.categoryId })),
             'Dish saved'
-          ).then((ok) => ok && setItemModal(null))
-        }
+          );
+          setItemSaving(false);
+          if (ok) setItemModal(null);
+        }}
       />
 
       <ConfirmDialog
@@ -215,40 +306,97 @@ export function MenuEditor() {
         description="This removes the section and its dishes. If any dish has been rated, the server will refuse — archive those dishes instead so their history survives."
         confirmLabel="Delete"
         destructive
-        onConfirm={() => run(() => api.deleteCategory(restaurantId, confirmDelete.id), 'Section deleted').then(() => setConfirmDelete(null))}
+        onConfirm={async () => {
+          const ok = await run(() => api.deleteCategory(restaurantId, confirmDelete.id), 'Section deleted');
+          if (ok) setConfirmDelete(null);
+        }}
       />
     </div>
   );
 }
 
-function CategoryModal({ state, onClose, onSave }) {
+function CategoryModal({ state, saving, onClose, onSave }) {
   const [name, setName] = useState('');
-  useEffect(() => setName(state?.name || ''), [state]);
+  // null = no schedule, the section always shows normally -- distinct from {}, which is every day
+  // with zero periods (the Pause button below), and is what makes status() report closed always.
+  const [hours, setHours] = useState(null);
+  useEffect(() => {
+    setName(state?.name || '');
+    setHours(state?.hours || null);
+  }, [state]);
 
   return (
-    <Modal open={!!state} onOpenChange={(o) => !o && onClose()} title={state?.id ? 'Rename section' : 'New section'}>
-      <form onSubmit={(e) => { e.preventDefault(); onSave(name); }} className="flex flex-col gap-3">
+    <Modal open={!!state} onOpenChange={(o) => !o && onClose()} title={state?.id ? 'Edit section' : 'New section'}>
+      <form onSubmit={(e) => { e.preventDefault(); onSave({ name, hours }); }} className="flex flex-col gap-3">
         <Field label="Name">
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Starters" required autoFocus />
         </Field>
+        {/* Only once the section exists -- a brand-new section is created with no schedule, and
+            gets one via a second edit rather than crowding the "New section" modal with it. */}
+        {state?.id && (
+          <Field
+            label="Serving hours"
+            as="div"
+            hint="Leave every day off for no schedule -- the section always shows normally. This is what a Breakfast section that only appears 07:00-11:00 is built from."
+          >
+            <HoursEditor hours={hours || {}} onChange={setHours} />
+            <Button type="button" variant="ghost" className="mt-2 w-fit" onClick={() => setHours({})} title="Clear all hours to pause this section">
+              Pause section
+            </Button>
+          </Field>
+        )}
         <div className="mt-1 flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="submit" disabled={!name.trim()}>Save</Button>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={saving} title="Cancel">Cancel</Button>
+          <Button type="submit" disabled={!name.trim()} loading={saving} title="Save section">Save</Button>
         </div>
       </form>
     </Modal>
   );
 }
 
-function ItemModal({ state, onClose, onSave }) {
-  const [form, setForm] = useState({ name: '', description: '', price: '' });
+const SPICE_LEVELS = [0, 1, 2, 3];
+const spiceIcons = (n, size = 12) => Array.from({ length: n }, (_, i) => <Flame key={i} size={size} />);
+const spiceLabel = (n) => (n === 0 ? 'None' : <span className="inline-flex gap-px text-accent">{spiceIcons(n)}</span>);
+
+const EMPTY_ITEM_FORM = { name: '', description: '', price: '', spiceLevel: 0, diet: 'none', allergens: [], promoLabel: 'none' };
+
+function ItemModal({ state, saving, onClose, onSave }) {
+  const [form, setForm] = useState(EMPTY_ITEM_FORM);
   useEffect(() => {
-    if (state) setForm({ name: state.name || '', description: state.description || '', price: state.price || '' });
+    if (state) setForm({
+      name: state.name || '',
+      description: state.description || '',
+      price: state.price || '',
+      spiceLevel: state.spiceLevel || 0,
+      // Radix Select can't represent "no selection" as an empty string, so 'none' stands in for
+      // it here and gets translated back to '' on save -- dietary.js's dietError only recognises
+      // '', null, undefined, 'vegetarian' or 'vegan'. Same trick for promoLabel below.
+      diet: state.diet || 'none',
+      allergens: state.allergens || [],
+      promoLabel: state.promoLabel || 'none',
+    });
   }, [state]);
+
+  function toggleAllergen(a) {
+    setForm((f) => ({
+      ...f,
+      allergens: f.allergens.includes(a) ? f.allergens.filter((x) => x !== a) : [...f.allergens, a],
+    }));
+  }
 
   return (
     <Modal open={!!state} onOpenChange={(o) => !o && onClose()} title={state?.id ? 'Edit dish' : 'New dish'}>
-      <form onSubmit={(e) => { e.preventDefault(); onSave(form); }} className="flex flex-col gap-3">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          onSave({
+            ...form,
+            diet: form.diet === 'none' ? '' : form.diet,
+            promoLabel: form.promoLabel === 'none' ? '' : form.promoLabel,
+          });
+        }}
+        className="flex flex-col gap-4"
+      >
         <Field label="Name">
           <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Calamari" required autoFocus />
         </Field>
@@ -258,9 +406,61 @@ function ItemModal({ state, onClose, onSave }) {
         <Field label="Price" hint="Leave blank for market price. R189, 189.50 and 189,50 all work.">
           <Input value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="R89.00" inputMode="decimal" />
         </Field>
+        <Field label="Promotion" hint="One label max -- shows as a pill next to the dish name on the menu.">
+          <Select value={form.promoLabel} onValueChange={(promoLabel) => setForm({ ...form, promoLabel })}>
+            <SelectItem value="none">None</SelectItem>
+            {Object.entries(PROMO_LABEL_TEXT).map(([value, label]) => (
+              <SelectItem key={value} value={value}>{label}</SelectItem>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Spice" as="div">
+          <div className="flex gap-1.5">
+            {SPICE_LEVELS.map((n) => (
+              <Button
+                key={n}
+                type="button"
+                variant="secondary"
+                // Inline style, not a `bg-raised` className: Button's own variant classes already
+                // set bg-transparent, and this codebase's cn() is a plain join (no tailwind-merge),
+                // so a same-property className here would lose to it rather than override it.
+                style={form.spiceLevel === n ? { backgroundColor: 'var(--color-raised)' } : undefined}
+                onClick={() => setForm({ ...form, spiceLevel: n })}
+                title={`Spice level: ${n === 0 ? 'None' : n}`}
+              >
+                {spiceLabel(n)}
+              </Button>
+            ))}
+          </div>
+        </Field>
+        <Field label="Diet">
+          <Select value={form.diet} onValueChange={(diet) => setForm({ ...form, diet })}>
+            <SelectItem value="none">No claim</SelectItem>
+            <SelectItem value="vegetarian">Vegetarian</SelectItem>
+            <SelectItem value="vegan">Vegan</SelectItem>
+          </Select>
+        </Field>
+        <Field label="Allergens" as="div" hint="Only what you tick here reaches the menu -- leave it blank rather than guess.">
+          {/* Same toggle-pill pattern as Spice above, not a checkbox list -- a fixed vocabulary of
+              14 is a set of choices to tap, not a form of independent yes/no fields. */}
+          <div className="flex flex-wrap gap-1.5">
+            {ALLERGENS.map((a) => (
+              <Button
+                key={a}
+                type="button"
+                variant={form.allergens.includes(a) ? 'secondary' : 'ghost'}
+                aria-pressed={form.allergens.includes(a)}
+                onClick={() => toggleAllergen(a)}
+                title={`Toggle ${ALLERGEN_LABELS[a]}`}
+              >
+                {ALLERGEN_LABELS[a]}
+              </Button>
+            ))}
+          </div>
+        </Field>
         <div className="mt-1 flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="submit" disabled={!form.name.trim()}>Save</Button>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={saving} title="Cancel">Cancel</Button>
+          <Button type="submit" disabled={!form.name.trim()} loading={saving} title="Save dish">Save</Button>
         </div>
       </form>
     </Modal>

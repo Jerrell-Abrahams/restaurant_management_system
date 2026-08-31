@@ -3,14 +3,13 @@ import { useOutletContext } from 'react-router-dom';
 import { Check, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import * as api from '../api';
+import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Card, MicroLabel } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
 import { Skeleton } from '../components/ui/Skeleton';
+import { Stars } from '../components/ui/Stars';
 import { cn } from '../components/ui/cn';
-
-const FACES = ['\u{1F61E}', '\u{1F641}', '\u{1F610}', '\u{1F642}', '\u{1F60D}'];
-const face = (n) => FACES[n - 1] || '–';
 
 const when = (iso) => {
   const mins = Math.round((Date.now() - new Date(iso)) / 60000);
@@ -59,7 +58,7 @@ export function Feedback() {
         <h1 className="font-serif text-[26px] font-medium tracking-[-0.015em]">Feedback</h1>
         <div className="flex gap-1.5">
           {FILTERS.map((f) => (
-            <Button key={f.key} variant={filter === f.key ? 'secondary' : 'ghost'} onClick={() => setFilter(f.key)}>
+            <Button key={f.key} variant={filter === f.key ? 'secondary' : 'ghost'} onClick={() => setFilter(f.key)} title={`Filter: ${f.label}`}>
               {f.label}
             </Button>
           ))}
@@ -130,8 +129,8 @@ function VisitRow({ visit, restaurantId, open, onToggle, onChanged }) {
 
   return (
     <Card className={cn('p-0', visit.resolved && 'opacity-60')}>
-      <button onClick={onToggle} className="flex w-full items-center gap-3 px-4 py-3 text-left">
-        <span className="text-[20px] leading-none">{face(visit.rating)}</span>
+      <button onClick={onToggle} className="flex w-full items-center gap-3 px-4 py-3 text-left" title={open ? 'Collapse' : 'Expand'}>
+        {visit.rating ? <Stars value={visit.rating} size={15} /> : <Badge>Suggestion</Badge>}
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13.5px] text-text">
             {visit.comment || <span className="text-dim">No comment</span>}
@@ -153,7 +152,7 @@ function VisitRow({ visit, restaurantId, open, onToggle, onChanged }) {
               <MicroLabel className="mb-1.5">Dishes rated</MicroLabel>
               {visit.items.map((i) => (
                 <div key={i.menu_item_id} className="flex items-baseline gap-2 py-1 text-[13px]">
-                  <span className="text-[15px] leading-none">{face(i.rating)}</span>
+                  <Stars value={i.rating} size={12} />
                   <span className="text-text">{i.name}</span>
                   {i.comment && <span className="text-muted">— {i.comment}</span>}
                 </div>
@@ -181,10 +180,10 @@ function VisitRow({ visit, restaurantId, open, onToggle, onChanged }) {
           />
           <div className="flex gap-2">
             {visit.resolved ? (
-              <Button variant="secondary" onClick={() => save(false)} disabled={busy}>Reopen</Button>
+              <Button variant="secondary" onClick={() => save(false)} disabled={busy} loading={busy} title="Reopen this feedback item">Reopen</Button>
             ) : (
-              <Button onClick={() => save(true)} disabled={busy}>
-                <Check size={13} /> Mark resolved
+              <Button onClick={() => save(true)} disabled={busy} loading={busy} title="Mark this feedback item resolved">
+                {!busy && <Check />} Mark resolved
               </Button>
             )}
           </div>

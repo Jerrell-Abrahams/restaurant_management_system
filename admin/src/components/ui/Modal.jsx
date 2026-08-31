@@ -21,7 +21,7 @@ export function Modal({ open, onOpenChange, title, children }) {
           <div className="mb-4 flex items-center justify-between">
             <Dialog.Title className="text-[15px] font-semibold text-text">{shown.title}</Dialog.Title>
             <Dialog.Close asChild>
-              <button className="rounded-md p-1 text-dim transition-colors hover:bg-raised hover:text-text" aria-label="Close">
+              <button className="rounded-md p-1 text-dim transition-colors hover:bg-raised hover:text-text" aria-label="Close" title="Close">
                 <X size={17} />
               </button>
             </Dialog.Close>

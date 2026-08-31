@@ -33,7 +33,11 @@ function since(lastAlertAt, now = Date.now()) {
   return lastAlertAt ? new Date(lastAlertAt) : new Date(now - FIRST_RUN_LOOKBACK_MS);
 }
 
-const FACES = ['\u{1F61E}', '\u{1F641}', '\u{1F610}', '\u{1F642}', '\u{1F60D}'];
+// Filled/empty stars, inline-styled since this renders in an email client, not the console.
+const stars = (n) =>
+  `<span style="color:#d6a83f;letter-spacing:1px">${'★'.repeat(n)}</span>` +
+  `<span style="color:#d8d1c4;letter-spacing:1px">${'☆'.repeat(5 - n)}</span>`;
+
 const esc = (s) =>
   String(s === null || s === undefined ? '' : s)
     .replace(/&/g, '&amp;')
@@ -61,7 +65,7 @@ function renderEmail({ restaurant, visits, itemRatings, consoleUrl }) {
     .map(
       (v) => `
       <tr><td style="padding:14px 0;border-top:1px solid #eaeaea">
-        <div style="font-size:20px;line-height:1">${FACES[v.rating - 1] || ''}</div>
+        <div style="font-size:15px;line-height:1">${stars(v.rating)}</div>
         <div style="margin-top:6px;font-size:14px;color:#0a0a0a">
           ${v.comment ? esc(v.comment) : '<span style="color:#8a8a8a">No comment left</span>'}
         </div>
@@ -82,7 +86,7 @@ function renderEmail({ restaurant, visits, itemRatings, consoleUrl }) {
       (i) => `
       <tr><td style="padding:12px 0;border-top:1px solid #eaeaea">
         <div style="font-size:14px;color:#0a0a0a">
-          <span style="font-size:17px;vertical-align:middle">${FACES[i.rating - 1] || ''}</span>
+          <span style="font-size:13px;vertical-align:middle">${stars(i.rating)}</span>
           <strong style="margin-left:6px">${esc(i.name)}</strong>
         </div>
         ${i.comment ? `<div style="margin-top:5px;font-size:13px;color:#5f6268">${esc(i.comment)}</div>` : ''}

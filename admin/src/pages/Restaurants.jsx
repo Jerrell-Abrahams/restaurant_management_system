@@ -46,8 +46,8 @@ export function Restaurants() {
           <p className="mt-0.5 text-[12.5px] text-muted">{me.email}</p>
         </div>
         <div className="flex gap-2">
-          {me.isAdmin && <Button onClick={() => setOpen(true)}>New restaurant</Button>}
-          <Button variant="secondary" onClick={logout}>Log out</Button>
+          {me.isAdmin && <Button onClick={() => setOpen(true)} title="Create a new restaurant">New restaurant</Button>}
+          <Button variant="secondary" onClick={logout} title="Log out">Log out</Button>
         </div>
       </div>
 
@@ -99,8 +99,8 @@ export function Restaurants() {
             <Input value={form.subscriptionId} onChange={(e) => setForm({ ...form, subscriptionId: e.target.value })} />
           </Field>
           <div className="mt-2 flex justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button type="submit" disabled={busy || !form.name}>{busy ? 'Creating…' : 'Create'}</Button>
+            <Button type="button" variant="secondary" onClick={() => setOpen(false)} disabled={busy} title="Cancel">Cancel</Button>
+            <Button type="submit" disabled={busy || !form.name} loading={busy} title="Create restaurant">{busy ? 'Creating…' : 'Create'}</Button>
           </div>
         </form>
       </Modal>

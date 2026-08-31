@@ -1,7 +1,7 @@
 # restaurant_management_system
 
 QR menu + diner feedback for restaurants. A paper coaster carries a QR code; scanning it
-opens that restaurant's menu, where a diner can rate individual dishes with emoji, rate the
+opens that restaurant's menu, where a diner can rate individual dishes with stars, rate the
 visit overall, and — at any score — be offered the restaurant's public Google review form.
 Management sees which dishes are working, which are not, and gets emailed when a table was
 unhappy.
@@ -177,7 +177,7 @@ change" is a claim, and we cannot support it.
 ## Status
 
 - **Phase 1 — foundation: done.** Schema, staff boundary, billing gate, restaurant + menu CRUD.
-- **Phase 2 — diner surface: done.** Server-rendered menu, search + category chips, emoji ratings, visit rating, Google CTA.
+- **Phase 2 — diner surface: done.** Server-rendered menu, search + category chips, star ratings, visit rating, Google CTA.
 - **Phase 3 — owner console: done.** Login, feedback inbox, menu editor, dish rankings, QR upload + download, settings.
 - **Phase 4 — alerts: done.** Debounced email, daily cron, POPIA purge, keep-warm.
 

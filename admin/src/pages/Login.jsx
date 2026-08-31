@@ -34,7 +34,7 @@ export function Login() {
           <Field label="Password">
             <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
           </Field>
-          <Button type="submit" className="mt-1 h-9 w-full" disabled={busy}>
+          <Button type="submit" className="mt-1 h-9 w-full" disabled={busy} loading={busy} title="Sign in">
             {busy ? 'Signing in…' : 'Sign in'}
           </Button>
         </div>

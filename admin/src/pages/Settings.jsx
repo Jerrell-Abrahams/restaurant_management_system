@@ -7,32 +7,8 @@ import { Button } from '../components/ui/Button';
 import { Card, CardHeader, CardTitle } from '../components/ui/Card';
 import { Input, Field } from '../components/ui/Input';
 import { Select, SelectItem } from '../components/ui/Select';
-
-const FACES = ['\u{1F61E}', '\u{1F641}', '\u{1F610}', '\u{1F642}', '\u{1F60D}'];
-
-// Same day keys the API validates (src/lib/hours.js) and the diner page reads (src/lib/
-// dinerPage.js) -- kept in sync by convention across the three, since the admin console and the
-// server are separate deployables with no shared import.
-const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
-const DAY_LABELS = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
-const DEFAULT_PERIOD = ['09:00', '17:00'];
-
-// Immutable updates over one `hours` object, mirrored by the four things a day row can do:
-// toggle open/closed, edit a time, add a split shift, remove one. Kept as plain functions rather
-// than folded into the JSX -- every call site below is a one-line setForm, not a decision.
-function toggleDayOpen(hours, day, open) {
-  return { ...hours, [day]: open ? [DEFAULT_PERIOD.slice()] : [] };
-}
-function updatePeriod(hours, day, idx, which, value) {
-  const periods = (hours[day] || []).map((p, i) => (i === idx ? (which === 'open' ? [value, p[1]] : [p[0], value]) : p));
-  return { ...hours, [day]: periods };
-}
-function addPeriod(hours, day) {
-  return { ...hours, [day]: [...(hours[day] || []), DEFAULT_PERIOD.slice()] };
-}
-function removePeriod(hours, day, idx) {
-  return { ...hours, [day]: (hours[day] || []).filter((_, i) => i !== idx) };
-}
+import { Stars } from '../components/ui/Stars';
+import { HoursEditor } from '../components/HoursEditor';
 
 export function Settings() {
   const { restaurant, restaurantId, reload } = useOutletContext();
@@ -110,66 +86,7 @@ export function Settings() {
 
           <div>
             <p className="mb-2 text-xs font-medium text-text/70">Hours</p>
-            <div className="flex flex-col gap-2">
-              {DAY_KEYS.map((day) => {
-                const periods = form.hours[day] || [];
-                const open = periods.length > 0;
-                return (
-                  <div key={day} className="rounded-md border border-border-2 bg-panel p-2.5">
-                    <label className="flex items-center justify-between gap-2 text-[12.5px] text-text">
-                      <span className="font-medium">{DAY_LABELS[day]}</span>
-                      <span className="flex items-center gap-1.5 text-dim">
-                        <input
-                          type="checkbox"
-                          checked={open}
-                          onChange={(e) => setForm({ ...form, hours: toggleDayOpen(form.hours, day, e.target.checked) })}
-                        />
-                        Open
-                      </span>
-                    </label>
-                    {open && (
-                      <div className="mt-2 flex flex-col gap-1.5">
-                        {periods.map((p, i) => (
-                          <div key={i} className="flex items-center gap-1.5">
-                            <Input
-                              type="time"
-                              className="h-7 w-auto"
-                              value={p[0]}
-                              onChange={(e) => setForm({ ...form, hours: updatePeriod(form.hours, day, i, 'open', e.target.value) })}
-                            />
-                            <span className="text-[11px] text-dim">to</span>
-                            <Input
-                              type="time"
-                              className="h-7 w-auto"
-                              value={p[1]}
-                              onChange={(e) => setForm({ ...form, hours: updatePeriod(form.hours, day, i, 'close', e.target.value) })}
-                            />
-                            {periods.length > 1 && (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                className="h-7 px-2"
-                                onClick={() => setForm({ ...form, hours: removePeriod(form.hours, day, i) })}
-                              >
-                                Remove
-                              </Button>
-                            )}
-                          </div>
-                        ))}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          className="h-7 w-fit px-2 text-[11.5px]"
-                          onClick={() => setForm({ ...form, hours: addPeriod(form.hours, day) })}
-                        >
-                          + Add a second period
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            <HoursEditor hours={form.hours} onChange={(hours) => setForm({ ...form, hours })} />
             {/* A close-after-midnight period (e.g. 18:00 -> 02:00) is a normal entry here, not an
                 error -- the diner-page badge (src/lib/hours.js status()) treats close <= open as
                 spanning into the next day rather than rejecting it. */}
@@ -203,7 +120,11 @@ export function Settings() {
           <Field label="Alert me at or below" hint="Several bad ratings in a row arrive as one email, not several.">
             <Select value={form.alertThreshold} onValueChange={(v) => setForm({ ...form, alertThreshold: v })}>
               {[1, 2, 3, 4].map((n) => (
-                <SelectItem key={n} value={String(n)}>{FACES[n - 1]}  {n} and below</SelectItem>
+                <SelectItem key={n} value={String(n)}>
+                  <span className="inline-flex items-center gap-1.5">
+                    <Stars value={n} size={12} /> {n} and below
+                  </span>
+                </SelectItem>
               ))}
             </Select>
           </Field>
@@ -232,6 +153,7 @@ export function Settings() {
               type="button"
               variant="secondary"
               className="w-fit"
+              title="Open the kitchen display in a new window"
               // Synchronous inside the click handler, no await before it -- an async window.open
               // is a popup block in most browsers.
               onClick={() => window.open(`/r/${restaurantId}/display`, 'kitchen-display')}
@@ -291,7 +213,7 @@ export function Settings() {
         </Card>
       )}
 
-      <Button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save changes'}</Button>
+      <Button type="submit" disabled={busy} loading={busy} title="Save changes">{busy ? 'Saving…' : 'Save changes'}</Button>
     </form>
   );
 }

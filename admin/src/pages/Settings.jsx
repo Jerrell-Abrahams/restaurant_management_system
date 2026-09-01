@@ -110,7 +110,7 @@ export function Settings() {
                 disabled={uploadingLogo}
                 title={form.logoUrl ? 'Replace logo' : 'Upload logo'}
                 className={cn(
-                  'group relative h-24 w-24 shrink-0 overflow-hidden rounded-full bg-panel transition-colors',
+                  'group relative h-24 w-24 shrink-0 overflow-hidden rounded-full bg-logo-chip transition-colors',
                   'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
                   'disabled:cursor-not-allowed disabled:opacity-60',
                   form.logoUrl ? 'border border-border-2' : 'border border-dashed border-border-2 hover:border-accent/50'

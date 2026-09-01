@@ -63,7 +63,7 @@ export function Layout() {
         {restaurant ? (
           <div className="flex items-center gap-2.5">
             {restaurant.logo_url && (
-              <img src={restaurant.logo_url} alt="" className="h-9 w-9 shrink-0 rounded-lg bg-panel object-contain" />
+              <img src={restaurant.logo_url} alt="" className="h-9 w-9 shrink-0 rounded-lg bg-logo-chip object-contain p-1.5" />
             )}
             <div className="min-w-0">
               <div className="truncate font-serif text-[17px] font-semibold text-text">{restaurant.name}</div>
@@ -154,7 +154,7 @@ export function Layout() {
           <MenuIcon />
         </IconButton>
         {restaurant?.logo_url && (
-          <img src={restaurant.logo_url} alt="" className="h-7 w-7 shrink-0 rounded-md bg-panel object-contain" />
+          <img src={restaurant.logo_url} alt="" className="h-7 w-7 shrink-0 rounded-md bg-logo-chip object-contain p-1" />
         )}
         <span className="truncate font-serif text-[15px] font-semibold">{restaurant?.name || ''}</span>
       </header>

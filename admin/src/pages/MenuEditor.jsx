@@ -180,8 +180,8 @@ export function MenuEditor() {
                   >
                     <ChevronDown className={cn('transition-transform', collapsed.has(cat.id) && '-rotate-90')} />
                   </IconButton>
-                  <button onClick={() => setCatModal({ id: cat.id, name: cat.name, hours: cat.hours })} className="flex items-center gap-2 text-left" title={`Edit ${cat.name}`}>
-                    <CardTitle>{cat.name}</CardTitle>
+                  <button onClick={() => setCatModal({ id: cat.id, name: cat.name, hours: cat.hours })} className="flex min-w-0 items-center gap-2 text-left" title={`Edit ${cat.name}`}>
+                    <CardTitle className="min-w-0 truncate">{cat.name}</CardTitle>
                     {isPaused(cat.hours) && (
                       <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.08em] text-warn">Paused</span>
                     )}
@@ -254,7 +254,7 @@ export function MenuEditor() {
                       }
                     >
                       <div className="flex items-baseline gap-2">
-                        <span className="truncate text-[13.5px] font-medium text-text">{item.name}</span>
+                        <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-text">{item.name}</span>
                         {PROMO_LABEL_TEXT[item.promo_label] && (
                           <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.08em] text-accent">{PROMO_LABEL_TEXT[item.promo_label]}</span>
                         )}

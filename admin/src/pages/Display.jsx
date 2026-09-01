@@ -191,46 +191,50 @@ export function Display() {
 
   return (
     <div className="flex min-h-screen flex-col bg-bg text-text">
-      <header className="flex items-center gap-4 border-b border-border bg-panel px-7 py-4">
+      <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border bg-panel px-4 py-3 sm:px-7 sm:py-4">
         {logoUrl ? (
-          <img src={logoUrl} alt="" className="h-8 w-8 shrink-0 rounded-lg bg-panel object-contain" />
+          <img src={logoUrl} alt="" className="h-8 w-8 shrink-0 rounded-lg bg-logo-chip object-contain p-1" />
         ) : (
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent font-serif text-[17px] font-semibold text-accent-ink">
             C
           </span>
         )}
-        <span className="font-mono text-[12px] uppercase tracking-[0.16em] text-dim">
+        <span className="min-w-0 flex-1 truncate font-mono text-[11px] uppercase tracking-[0.16em] text-dim sm:text-[12px]">
           {name || 'Kitchen display'} · Floor calls
         </span>
-        <span className={cn('ml-auto flex items-center gap-2 font-mono text-[12px]', failing ? 'text-bad' : 'text-muted')}>
-          <span className={cn('h-[7px] w-[7px] rounded-full', failing ? 'bg-bad' : 'bg-ok animate-blip')} />
-          {failing ? 'Reconnecting…' : 'Live'}
-        </span>
-        <span className="font-mono text-[22px] tabular-nums text-text">
-          {new Date().toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })}
-        </span>
-        <div className="flex gap-2">
-          <IconButton
-            onClick={toggleMute}
-            disabled={forcedMute}
-            aria-label={forcedMute ? 'Chime disabled in restaurant settings' : muted ? 'Unmute chime' : 'Mute chime'}
-            title={forcedMute ? 'Chime disabled in restaurant settings' : muted ? 'Unmute chime' : 'Mute chime'}
-          >
-            {forcedMute || muted ? <VolumeX /> : <Volume2 />}
-          </IconButton>
-          <IconButton onClick={() => document.documentElement.requestFullscreen?.()} aria-label="Fullscreen" title="Fullscreen">
-            <Maximize />
-          </IconButton>
+        {/* One group so it wraps to its own line as a unit on a phone, rather than each piece
+            breaking separately. */}
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+          <span className={cn('flex items-center gap-2 font-mono text-[12px]', failing ? 'text-bad' : 'text-muted')}>
+            <span className={cn('h-[7px] w-[7px] rounded-full', failing ? 'bg-bad' : 'bg-ok animate-blip')} />
+            {failing ? 'Reconnecting…' : 'Live'}
+          </span>
+          <span className="font-mono text-[18px] tabular-nums text-text sm:text-[22px]">
+            {new Date().toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })}
+          </span>
+          <div className="flex gap-2">
+            <IconButton
+              onClick={toggleMute}
+              disabled={forcedMute}
+              aria-label={forcedMute ? 'Chime disabled in restaurant settings' : muted ? 'Unmute chime' : 'Mute chime'}
+              title={forcedMute ? 'Chime disabled in restaurant settings' : muted ? 'Unmute chime' : 'Mute chime'}
+            >
+              {forcedMute || muted ? <VolumeX /> : <Volume2 />}
+            </IconButton>
+            <IconButton onClick={() => document.documentElement.requestFullscreen?.()} aria-label="Fullscreen" title="Fullscreen">
+              <Maximize />
+            </IconButton>
+          </div>
         </div>
       </header>
 
-      <div className="flex items-baseline gap-8 border-b border-border px-7 py-3.5">
+      <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b border-border px-4 py-3 sm:gap-x-8 sm:px-7 sm:py-3.5">
         <span className="flex items-baseline gap-2">
-          <span className="font-serif text-[26px] font-medium text-accent">{waiterCount}</span>
+          <span className="font-serif text-[22px] font-medium text-accent sm:text-[26px]">{waiterCount}</span>
           <span className="text-[13px] text-muted">waiter call{waiterCount === 1 ? '' : 's'}</span>
         </span>
         <span className="flex items-baseline gap-2">
-          <span className="font-serif text-[26px] font-medium text-ok">{billCount}</span>
+          <span className="font-serif text-[22px] font-medium text-ok sm:text-[26px]">{billCount}</span>
           <span className="text-[13px] text-muted">bill{billCount === 1 ? '' : 's'} wanted</span>
         </span>
         <span className="ml-auto font-mono text-[12px] text-dim">
@@ -238,7 +242,7 @@ export function Display() {
         </span>
       </div>
 
-      <main className="flex-1 p-6">
+      <main className="flex-1 p-4 sm:p-6">
         {rows === null ? (
           <p className="text-[13px] text-dim">Loading…</p>
         ) : open.length === 0 && claimed.length === 0 ? (

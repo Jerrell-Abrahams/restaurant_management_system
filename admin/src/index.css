@@ -46,6 +46,12 @@
 
   --color-chart-cursor: #221c18; /* bar-hover band; see lib/chart.js */
 
+  /* Fixed dark chip for an uploaded logo, not --color-panel -- panel flips to a light cream in
+   * light mode, which a white or light-coloured logo (the common case) would disappear against.
+   * Same fix as src/lib/dinerPage.js's .logo on the diner-facing menu; deliberately outside the
+   * :root[data-theme="light"] override below so it never flips. */
+  --color-logo-chip: #1b1613;
+
   /* Skeleton bar fill. Deliberately not --raised: in light mode raised (#ffffff) sits on
    * panel (#fafafa), so a raised-filled bar would be invisible and inverted. */
   --color-skeleton: #241d18;
@@ -152,8 +158,8 @@
   --color-bg: #fbf8f4;
   --color-panel: #ffffff;
   --color-raised: #f4efe8;
-  --color-border: #e7dfd4;
-  --color-border-2: #d7ccbd;
+  --color-border: #c9bdac;
+  --color-border-2: #a99a83;
 
   --color-text: #1b1714;
   --color-muted: #6a615a;

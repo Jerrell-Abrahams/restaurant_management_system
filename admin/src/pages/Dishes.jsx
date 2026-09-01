@@ -115,7 +115,7 @@ function Board({ title, rows, metric = 'average', empty = 'Not enough ratings ye
       ) : (
         rows.map((d) => (
           <div key={d.id} className="flex items-center justify-between gap-3 border-b border-border px-4 py-2.5 last:border-0">
-            <span className="truncate text-[13px] text-text">{d.name}</span>
+            <span className="min-w-0 flex-1 truncate text-[13px] text-text">{d.name}</span>
             <span className="flex shrink-0 items-baseline gap-2">
               {metric === 'trend' ? (
                 <Trend value={d.trend} />

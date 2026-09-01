@@ -296,11 +296,6 @@ footer{position:fixed;left:0;right:0;bottom:0;z-index:7;padding:16px 18px 26px;
    path -- not a replacement: burying them there alone would make "Request bill" undiscoverable on
    first visit. */
 .cta-row{pointer-events:auto;display:flex;gap:8px;align-items:flex-start}
-/* Wraps a service button + its status line so the two stack under equal-width columns --
-   .cta-btn's own flex:1 sizes it against Rate us, an unwrapped sibling in the same row. */
-.cta-col{flex:1;min-width:0}
-.cta-col .cta-btn{flex:none;width:100%}
-.cta-status{margin:4px 0 0;font-size:10px;letter-spacing:.04em;text-align:center;color:var(--accent)}
 .cta-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:5px;height:60px;border-radius:11px;border:1px solid var(--cta-border);
   background:var(--cta-bg);color:var(--cta-ink);font:inherit;font-size:9.5px;
@@ -770,8 +765,8 @@ ${hasFilters ? '<p class="empty" id="no-hits" hidden>Nothing on the menu matches
   <div class="cta-row">
     ${
       serviceEnabled
-        ? `<div class="cta-col"><button class="cta-btn" type="button" data-kind="waiter">${ICON_BELL}<span class="label">Call waiter</span></button><p class="cta-status" hidden></p></div>
-    <div class="cta-col"><button class="cta-btn" type="button" data-kind="bill">${ICON_RECEIPT}<span class="label">Request bill</span></button><p class="cta-status" hidden></p></div>`
+        ? `<button class="cta-btn" type="button" data-kind="waiter">${ICON_BELL}<span class="label">Call waiter</span></button>
+    <button class="cta-btn" type="button" data-kind="bill">${ICON_RECEIPT}<span class="label">Request bill</span></button>`
         : ''
     }
     <button class="cta-btn" type="button" id="open-visit"><span class="cta-star" aria-hidden="true">★</span><span class="label">Rate us</span></button>
@@ -1306,6 +1301,10 @@ ${
     // for a leisurely meal, short enough that tomorrow's diner on a shared family phone does not
     // inherit last night's table. Request memory below reuses the same window.
     var TABLE_TTL = 4 * 60 * 60 * 1000;
+    // Same window the footer pill and the manage dialog's Nudge button both cool down for --
+    // one constant so a mashed button can't re-chime the kitchen display faster from one path
+    // than the other.
+    var COOLDOWN = 90000;
     var pendingKind = null;
     var LABELS = { waiter: 'Call waiter', bill: 'Request bill' };
 
@@ -1334,26 +1333,28 @@ ${
     function rememberRequest(kind, id){
       try { localStorage.setItem(requestKey(kind), JSON.stringify({ id: id, t: Date.now() })); } catch(e){}
     }
+    // Records the last nudge separately from "t" (the original ask, used for the "asked X minutes
+    // ago" copy) so the nudge cooldown tracks its own clock instead of resetting the ago label.
+    function touchNudge(kind){
+      try {
+        var r = JSON.parse(localStorage.getItem(requestKey(kind)) || 'null');
+        if(!r) return;
+        r.n = Date.now();
+        localStorage.setItem(requestKey(kind), JSON.stringify(r));
+      } catch(e){}
+    }
     function forgetRequest(kind){
       try { localStorage.removeItem(requestKey(kind)); } catch(e){}
     }
 
     // Every element sharing this data-kind -- the footer pill and the sheet row are the same
-    // request wearing two hats, and both must show the same disabled state at once, but not the
-    // same text treatment: the sheet row swaps its own title in place (setLabel), while the
-    // footer pill keeps "Call waiter"/"Request bill" fixed and reports status in the .cta-status
-    // line underneath instead -- swapping the pill's own label read as the button changing
-    // purpose, not confirming an action.
+    // request wearing two hats, and both swap their own label in place to report status, so
+    // both stay in sync with one call.
     function ofKind(kind){ return document.querySelectorAll('[data-kind="' + kind + '"]'); }
     function setLabel(el, text){ (el.querySelector('.label') || el).textContent = text; }
-    function applyStatus(el, text){
-      if(el.classList.contains('sheet-row')) return setLabel(el, text);
-      var cap = el.parentElement.querySelector('.cta-status');
-      if(cap){ cap.textContent = text || ''; cap.hidden = !text; }
-    }
     function resetKind(kind){
       ofKind(kind).forEach(function(el){
-        applyStatus(el, el.classList.contains('sheet-row') ? LABELS[kind] : '');
+        setLabel(el, LABELS[kind]);
         el.disabled = false;
       });
     }
@@ -1370,12 +1371,15 @@ ${
       }).then(function(body){
         if(body && body.id) rememberRequest(kind, body.id);
         var sent = kind === 'bill' ? 'Bill requested ✓' : 'Waiter called ✓';
-        els.forEach(function(el){ applyStatus(el, sent); });
+        // Re-enabled, not left disabled: a repeat tap while "requested" is showing should open
+        // the manage dialog (rememberedRequest is now set, so the click handler below routes
+        // there) rather than being a dead button.
+        els.forEach(function(el){ setLabel(el, sent); el.disabled = false; });
         // The cooldown is UX, not the guard -- the dedupe index in service_requests.sql is what
         // actually protects the display. This just stops the buttons reading as unanswered.
-        setTimeout(function(){ resetKind(kind); }, 90000);
+        setTimeout(function(){ resetKind(kind); }, COOLDOWN);
       }).catch(function(){
-        els.forEach(function(el){ applyStatus(el, 'Could not send — tap to retry'); el.disabled = false; });
+        els.forEach(function(el){ setLabel(el, 'Could not send — tap to retry'); el.disabled = false; });
       });
     }
 
@@ -1399,8 +1403,17 @@ ${
       manageKind = kind;
       manageH.textContent = kind === 'bill' ? 'Bill already requested' : 'Waiter already called';
       manageBody.textContent = 'You asked ' + agoLabel(Date.now() - active.t) + '. Still waiting, or is this sorted?';
-      manageNudge.disabled = false;
       manageNudge.textContent = 'Nudge them again';
+      // Cooldown clock is the last nudge if there's been one, otherwise the original ask --
+      // covers a reopen of this dialog within COOLDOWN of either. Cancel isn't gated: sorted
+      // is sorted, whenever it happens.
+      var remaining = COOLDOWN - (Date.now() - (active.n || active.t));
+      manageNudge.disabled = remaining > 0;
+      if(remaining > 0){
+        setTimeout(function(){
+          if(manageKind === kind && !manage.hidden) manageNudge.disabled = false;
+        }, remaining);
+      }
       manageCancel.disabled = false;
       manageCancel.textContent = 'Cancel request';
       manage.hidden = false;
@@ -1422,6 +1435,7 @@ ${
       post('/service-request/' + encodeURIComponent(active.id) + '/nudge', {}).then(function(res){
         if(res.status === 404) return handleStale();
         if(!res.ok) throw new Error();
+        touchNudge(manageKind);
         manageNudge.textContent = 'They’ve been told ✓';
         setTimeout(function(){ manage.hidden = true; }, 1200);
         // Same cooldown, same reasoning, as the initial send -- stops a mashed button from
@@ -1429,7 +1443,7 @@ ${
         setTimeout(function(){
           manageNudge.disabled = false;
           manageNudge.textContent = 'Nudge them again';
-        }, 90000);
+        }, COOLDOWN);
       }).catch(function(){
         manageNudge.disabled = false;
         manageNudge.textContent = 'Could not send — tap to retry';

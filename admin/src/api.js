@@ -37,6 +37,7 @@ export const listRestaurants = () => get('/api/admin/restaurants');
 export const getRestaurant = (id) => get(`/api/admin/restaurants/${id}`);
 export const createRestaurant = (body) => post('/api/admin/restaurants', body);
 export const updateRestaurant = (id, body) => patch(`/api/admin/restaurants/${id}`, body);
+export const uploadLogo = (id, image) => post(`/api/admin/restaurants/${id}/logo`, { image });
 
 export const getMenu = (id) => get(`/api/admin/restaurants/${id}/menu`);
 export const createCategory = (id, body) => post(`/api/admin/restaurants/${id}/categories`, body);
@@ -49,6 +50,7 @@ export const getFeedback = (id, params = '') => get(`/api/admin/restaurants/${id
 export const updateVisit = (id, visitId, body) => patch(`/api/admin/restaurants/${id}/visits/${visitId}`, body);
 export const getDishes = (id) => get(`/api/admin/restaurants/${id}/dishes`);
 export const getSummary = (id) => get(`/api/admin/restaurants/${id}/summary`);
+export const getAnalytics = (id) => get(`/api/admin/restaurants/${id}/analytics`);
 
 export const getServiceRequests = (id) => get(`/api/admin/restaurants/${id}/service-requests`);
 export const ackServiceRequest = (id, requestId) =>

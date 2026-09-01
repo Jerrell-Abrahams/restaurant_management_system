@@ -60,16 +60,18 @@ export function Restaurants() {
       ) : (
         <Card className="p-0">
           <CardHeader><CardTitle>{me.restaurants.length} restaurant{me.restaurants.length === 1 ? '' : 's'}</CardTitle></CardHeader>
-          {me.restaurants.map((r) => (
-            <Link
-              key={r.id}
-              to={`/r/${r.id}`}
-              className="flex items-center justify-between border-b border-border px-4 py-3 last:border-0 hover:bg-raised"
-            >
-              <span className="text-[13.5px] font-medium text-text">{r.name}</span>
-              <span className="font-mono text-[11px] text-dim">/{r.slug}</span>
-            </Link>
-          ))}
+          <div className="max-h-[420px] overflow-y-auto">
+            {me.restaurants.map((r) => (
+              <Link
+                key={r.id}
+                to={`/r/${r.id}`}
+                className="flex items-center justify-between border-b border-border px-4 py-3 last:border-0 hover:bg-raised"
+              >
+                <span className="text-[13.5px] font-medium text-text">{r.name}</span>
+                <span className="font-mono text-[11px] text-dim">/{r.slug}</span>
+              </Link>
+            ))}
+          </div>
         </Card>
       )}
 

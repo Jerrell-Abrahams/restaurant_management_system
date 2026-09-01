@@ -38,6 +38,15 @@ export function Login() {
             {busy ? 'Signing in…' : 'Sign in'}
           </Button>
         </div>
+
+        <a
+          className="mt-6 block text-center text-[10.5px] text-dim transition-colors hover:text-muted"
+          href="https://complexai.co.za"
+          target="_blank"
+          rel="noopener"
+        >
+          Powered by <strong>Complex AI</strong>
+        </a>
       </form>
     </div>
   );

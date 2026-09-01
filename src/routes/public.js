@@ -131,6 +131,24 @@ router.get('/:slug', async (req, res) => {
   res.type('html').send(renderPage({ restaurant: ctx.restaurant, menu }));
 });
 
+// --- QR scans ------------------------------------------------------------------------------
+
+// Fired by a client-side beacon on every page load (see dinerPage.js), not counted above -- the
+// menu route is cached 60s at a shared edge, so most real scans never reach this process if the
+// counting happened there instead. No dedup: a diner reloading mid-visit is another real scan.
+router.post('/api/public/:slug/scan', async (req, res) => {
+  const ctx = await bySlug(req.params.slug);
+  if (!ctx) return res.status(404).json({ error: 'Not found' });
+
+  const { error } = await db.from('qr_scans').insert({
+    restaurant_id: ctx.restaurant.id,
+    ip_hash: hashIp(req), // COMPLIANCE.md 5: abuse detection, never displayed or exported
+  });
+  if (error) return res.status(500).json({ error: error.message });
+
+  res.json({ ok: true });
+});
+
 // --- Ratings -----------------------------------------------------------------------------
 
 router.post('/api/public/:slug/item-rating', async (req, res) => {
@@ -253,17 +271,79 @@ router.post('/api/public/:slug/service-request', async (req, res) => {
   const bad = tableError(table);
   if (bad) return res.status(400).json({ error: bad });
 
-  const { error } = await db.from('service_requests').insert({
-    restaurant_id: ctx.restaurant.id,
-    table_label: table,
-    kind: req.body.kind,
-    ip_hash: hashIp(req), // COMPLIANCE.md 5: abuse detection, never displayed or exported
-  });
+  const { data, error } = await db
+    .from('service_requests')
+    .insert({
+      restaurant_id: ctx.restaurant.id,
+      table_label: table,
+      kind: req.body.kind,
+      ip_hash: hashIp(req), // COMPLIANCE.md 5: abuse detection, never displayed or exported
+    })
+    .select('id')
+    .single();
 
   // The dedupe index fired: this table already has an unanswered request of this kind on the
   // display. That is the system working as designed, and to the diner it is indistinguishable
   // from success -- because it is; staff have already been told.
   if (error && error.code !== DUPLICATE) return res.status(500).json({ error: error.message });
+
+  // The diner's browser needs an id either way, to manage the request later (nudge/cancel below)
+  // -- on the dedupe path its own memory of that id may be gone (a different device, or a cleared
+  // browser), so look up the row the index just told us already exists.
+  let id = data?.id;
+  if (!id) {
+    const { data: existing } = await db
+      .from('service_requests')
+      .select('id')
+      .eq('restaurant_id', ctx.restaurant.id)
+      .eq('kind', req.body.kind)
+      .ilike('table_label', table)
+      .is('acknowledged_at', null)
+      .maybeSingle();
+    id = existing?.id;
+  }
+  res.json({ ok: true, id });
+});
+
+// Diner self-service on a request they hold the id for. There is no diner account, so knowing the
+// id -- a 128-bit UUID, never guessable -- is the same trust model currentVisit()'s rv cookie
+// already relies on elsewhere in this file. Both treat "already acknowledged" as a clean 404
+// rather than a 500: that is the normal case (the diner tapped the button again after being
+// helped), not an error.
+
+// Bumps nudged_at only -- created_at (the kitchen display's true, honest wait-time clock) never
+// moves. See src/db/service_request_nudge.sql.
+router.post('/api/public/:slug/service-request/:id/nudge', async (req, res) => {
+  const ctx = await bySlug(req.params.slug);
+  if (!ctx || !ctx.restaurant.service_requests_enabled) return res.status(404).json({ error: 'Not found' });
+
+  const { data, error } = await db
+    .from('service_requests')
+    .update({ nudged_at: new Date().toISOString() })
+    .eq('id', req.params.id)
+    .eq('restaurant_id', ctx.restaurant.id)
+    .is('acknowledged_at', null)
+    .select('id')
+    .maybeSingle();
+  if (error) return res.status(500).json({ error: error.message });
+  if (!data) return res.status(404).json({ error: 'Already taken care of' });
+  res.json({ ok: true });
+});
+
+router.delete('/api/public/:slug/service-request/:id', async (req, res) => {
+  const ctx = await bySlug(req.params.slug);
+  if (!ctx || !ctx.restaurant.service_requests_enabled) return res.status(404).json({ error: 'Not found' });
+
+  const { data, error } = await db
+    .from('service_requests')
+    .delete()
+    .eq('id', req.params.id)
+    .eq('restaurant_id', ctx.restaurant.id)
+    .is('acknowledged_at', null)
+    .select('id')
+    .maybeSingle();
+  if (error) return res.status(500).json({ error: error.message });
+  if (!data) return res.status(404).json({ error: 'Already taken care of' });
   res.json({ ok: true });
 });
 

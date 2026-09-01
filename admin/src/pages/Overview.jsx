@@ -61,9 +61,13 @@ export function Overview() {
     return <div className="flex flex-col gap-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-24 w-full" />)}</div>;
   }
 
-  // No visits at all yet, rather than "quiet today" -- average is null only when nothing has
-  // ever been rated, so it is the one number that can tell the two apart.
-  const firstRun = summary.average === null;
+  // No scans at all yet, rather than "quiet today" -- this is the moment nobody has ever pointed
+  // a phone at the coaster, which is a different state from "scanned plenty, nobody's rated
+  // anything yet" (that one gets the normal dashboard, with a 0 sitting in Ratings today).
+  // Both signals have to agree: qr_scans is a new table with no historical backfill, so an
+  // established restaurant with months of ratings but zero rows in it yet (fresh off this
+  // deploy) must still land on its real dashboard, not get told it has never been scanned.
+  const firstRun = summary.average === null && summary.totalScans === 0;
 
   return (
     <div>
@@ -106,7 +110,8 @@ export function Overview() {
         </Card>
       ) : (
         <div className="flex flex-col gap-6">
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+            <Stat label="Scans today" value={summary.scansToday} sub={`${summary.totalScans} total`} />
             <Stat label="Ratings today" value={summary.todayCount} />
             <Stat label="Average visit" value={summary.average} tone="ok" />
             <Stat label="Needs attention" value={summary.openIssues} tone={summary.openIssues > 0 ? 'bad' : undefined} />
@@ -212,7 +217,7 @@ export function Overview() {
   );
 }
 
-function Stat({ label, value, tone }) {
+function Stat({ label, value, tone, sub }) {
   return (
     <Card className="p-3.5">
       <MicroLabel>{label}</MicroLabel>
@@ -226,6 +231,7 @@ function Stat({ label, value, tone }) {
       >
         {value === null || value === undefined ? <Skeleton className="h-6 w-10" /> : value}
       </div>
+      {sub && <div className="mt-1 font-mono text-[10px] text-dim">{sub}</div>}
     </Card>
   );
 }

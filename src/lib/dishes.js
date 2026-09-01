@@ -86,4 +86,30 @@ function leaderboards(summaries, { limit = 5 } = {}) {
   };
 }
 
-module.exports = { summarize, leaderboards, MIN_RATINGS, WINDOW_DAYS };
+// One row per menu section, in menu order (not ranked -- an owner scanning this wants "which
+// section needs help", laid out the way the menu itself is). Archived dishes still count: their
+// ratings are the section's history, same reasoning as summarize() keeping them in the average.
+//
+// @param categories [{ id, name }] in display order
+// @param items      [{ id, category_id }]
+// @param ratings    [{ menu_item_id, rating }]
+function categoryBoard(categories, items, ratings) {
+  const categoryOf = new Map(items.map((i) => [i.id, i.category_id]));
+  const scoresByCategory = new Map(categories.map((c) => [c.id, []]));
+
+  for (const r of ratings) {
+    const catId = categoryOf.get(r.menu_item_id);
+    if (scoresByCategory.has(catId)) scoresByCategory.get(catId).push(r.rating);
+  }
+
+  return categories
+    .map((c) => {
+      const scores = scoresByCategory.get(c.id);
+      return { id: c.id, name: c.name, count: scores.length, average: round1(mean(scores)) };
+    })
+    // A section with zero ratings isn't "doing badly", it has nothing to show yet -- same
+    // honesty rule as an unranked dish, just without a partial state worth rendering.
+    .filter((c) => c.count > 0);
+}
+
+module.exports = { summarize, leaderboards, categoryBoard, MIN_RATINGS, WINDOW_DAYS };

@@ -12,6 +12,7 @@ import { Display } from './pages/Display';
 import { Feedback } from './pages/Feedback';
 import { MenuEditor } from './pages/MenuEditor';
 import { Dishes } from './pages/Dishes';
+import { Analytics } from './pages/Analytics';
 import { QrCode } from './pages/QrCode';
 import { Settings } from './pages/Settings';
 
@@ -46,6 +47,7 @@ export default function App() {
               <Route path="feedback" element={<Feedback />} />
               <Route path="menu" element={<MenuEditor />} />
               <Route path="dishes" element={<Dishes />} />
+              <Route path="analytics" element={<Analytics />} />
               <Route path="qr" element={<QrCode />} />
               <Route path="settings" element={<Settings />} />
             </Route>

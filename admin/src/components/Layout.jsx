@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate, useParams } from 'react-router-dom';
-import { LayoutDashboard, MessageSquare, UtensilsCrossed, TrendingDown, QrCode, SlidersHorizontal, LogOut, Menu as MenuIcon, Sun, Moon, ChevronsUpDown, ExternalLink } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, UtensilsCrossed, TrendingDown, QrCode, SlidersHorizontal, LogOut, Menu as MenuIcon, Sun, Moon, ChevronsUpDown, ExternalLink, BarChart3 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../lib/theme';
@@ -15,6 +15,7 @@ const nav = [
   { to: 'feedback', label: 'Feedback', icon: MessageSquare, badge: true },
   { to: 'menu', label: 'Menu', icon: UtensilsCrossed },
   { to: 'dishes', label: 'Dishes', icon: TrendingDown },
+  { to: 'analytics', label: 'Analytics', icon: BarChart3 },
   { to: 'qr', label: 'QR code', icon: QrCode },
   { to: 'settings', label: 'Settings', icon: SlidersHorizontal },
 ];
@@ -60,18 +61,23 @@ export function Layout() {
     <div className="flex h-full flex-col gap-1 p-3">
       <div className="px-2 pb-3 pt-1">
         {restaurant ? (
-          <>
-            <div className="truncate font-serif text-[17px] font-semibold text-text">{restaurant.name}</div>
-            <a
-              className="mt-1 inline-flex items-center gap-1.5 rounded-md border border-border-2 px-2 py-1 text-[11px] text-muted transition-colors hover:border-accent hover:text-accent"
-              href={restaurant.qr_target_url}
-              target="_blank"
-              rel="noopener"
-              title="Open the live menu diners see"
-            >
-              <ExternalLink size={11} className="flex-none" />View Menu
-            </a>
-          </>
+          <div className="flex items-center gap-2.5">
+            {restaurant.logo_url && (
+              <img src={restaurant.logo_url} alt="" className="h-9 w-9 shrink-0 rounded-lg bg-panel object-contain" />
+            )}
+            <div className="min-w-0">
+              <div className="truncate font-serif text-[17px] font-semibold text-text">{restaurant.name}</div>
+              <a
+                className="mt-1 inline-flex items-center gap-1.5 rounded-md border border-border-2 px-2 py-1 text-[11px] text-muted transition-colors hover:border-accent hover:text-accent"
+                href={restaurant.qr_target_url}
+                target="_blank"
+                rel="noopener"
+                title="Open the live menu diners see"
+              >
+                <ExternalLink size={11} className="flex-none" />View Menu
+              </a>
+            </div>
+          </div>
         ) : (
           <Skeleton className="h-4 w-32" />
         )}
@@ -127,6 +133,14 @@ export function Layout() {
           <LogOut />
         </IconButton>
       </div>
+      <a
+        className="mt-2 text-center text-[10.5px] text-dim transition-colors hover:text-muted"
+        href="https://complexai.co.za"
+        target="_blank"
+        rel="noopener"
+      >
+        Powered by <strong>Complex AI</strong>
+      </a>
     </div>
   );
 
@@ -139,6 +153,9 @@ export function Layout() {
         <IconButton onClick={() => setDrawer(true)} aria-label="Open menu" title="Open menu">
           <MenuIcon />
         </IconButton>
+        {restaurant?.logo_url && (
+          <img src={restaurant.logo_url} alt="" className="h-7 w-7 shrink-0 rounded-md bg-panel object-contain" />
+        )}
         <span className="truncate font-serif text-[15px] font-semibold">{restaurant?.name || ''}</span>
       </header>
       {drawer && (

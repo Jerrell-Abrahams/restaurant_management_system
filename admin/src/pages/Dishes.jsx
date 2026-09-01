@@ -47,6 +47,9 @@ export function Dishes() {
           <Board title="Needs work" rows={boards.worst} />
           <Board title="Most rated" rows={boards.mostRated} metric="count" />
           <Board title="Slipping" rows={boards.slipping} metric="trend" empty="Nothing is trending down." />
+          {boards.byCategory.length > 0 && (
+            <Board title="By category" rows={boards.byCategory} className="md:col-span-2" />
+          )}
         </div>
       )}
 
@@ -62,8 +65,8 @@ export function Dishes() {
         {live.length === 0 ? (
           <p className="px-4 py-6 text-[12.5px] text-dim">No dishes on the menu yet.</p>
         ) : (
-          <Table>
-            <Thead>
+          <Table containerClassName="max-h-[420px] overflow-y-auto">
+            <Thead className="sticky top-0 z-10">
               <Tr>
                 <Th>Dish</Th>
                 <Th className="text-right">Ratings</Th>
@@ -103,9 +106,9 @@ export function Dishes() {
   );
 }
 
-function Board({ title, rows, metric = 'average', empty = 'Not enough ratings yet.' }) {
+function Board({ title, rows, metric = 'average', empty = 'Not enough ratings yet.', className }) {
   return (
-    <Card className="p-0">
+    <Card className={cn('p-0', className)}>
       <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
       {rows.length === 0 ? (
         <p className="px-4 py-5 text-[12.5px] text-dim">{empty}</p>

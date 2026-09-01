@@ -57,6 +57,7 @@ function chime() {
 export function Display() {
   const { restaurantId } = useParams();
   const [name, setName] = useState('');
+  const [logoUrl, setLogoUrl] = useState('');
   const [rows, setRows] = useState(null); // server truth: open, unacknowledged
   const [claimed, setClaimed] = useState([]); // transient ghosts, independent of polling -- see ack()
   const [lastPoll, setLastPoll] = useState(null);
@@ -69,10 +70,21 @@ export function Display() {
   });
   const mutedRef = useRef(muted);
   mutedRef.current = muted;
+  // Restaurant-wide ceiling, not a default (Settings.jsx): browser autoplay can't force sound ON
+  // for a device that hasn't unmuted itself with its own gesture, so this can only ever silence,
+  // never enable, and it overrides the local toggle above rather than just seeding it.
+  const [forcedMute, setForcedMute] = useState(false);
+  const forcedMuteRef = useRef(false);
+  forcedMuteRef.current = forcedMute;
   const seen = useRef(null); // null until the first poll lands
+  const nudged = useRef(null); // id -> last nudged_at reacted to, null until the first poll lands
 
   useEffect(() => {
-    api.getRestaurant(restaurantId).then((r) => setName(r.name)).catch(() => {});
+    api.getRestaurant(restaurantId).then((r) => {
+      setName(r.name);
+      setLogoUrl(r.logo_url || '');
+      setForcedMute(!!r.service_requests_chime_muted);
+    }).catch(() => {});
   }, [restaurantId]);
 
   // A 1s ticker redraws the clock and every card's elapsed time between polls -- otherwise "2:41"
@@ -95,10 +107,15 @@ export function Display() {
         try {
           const data = await api.getServiceRequests(restaurantId);
           if (stopped) return;
-          // The first response seeds the set silently -- opening the display with 3 cards already
-          // waiting should not greet the kitchen with 3 chimes at once.
-          if (seen.current && data.some((r) => !seen.current.has(r.id)) && !mutedRef.current) chime();
+          // The first response seeds the sets silently -- opening the display with 3 cards already
+          // waiting (or already nudged) should not greet the kitchen with 3 chimes at once.
+          const isNew = (r) => seen.current && !seen.current.has(r.id);
+          // Compared by value, not presence -- a request can be nudged more than once, and each
+          // one is a fresh "still waiting" that deserves its own chime.
+          const isFreshNudge = (r) => nudged.current && r.nudged_at && nudged.current.get(r.id) !== r.nudged_at;
+          if (seen.current && data.some((r) => isNew(r) || isFreshNudge(r)) && !mutedRef.current && !forcedMuteRef.current) chime();
           seen.current = new Set(data.map((r) => r.id));
+          nudged.current = new Map(data.map((r) => [r.id, r.nudged_at || null]));
           setRows(data);
           setLastPoll(Date.now());
           setFailing(false);
@@ -175,9 +192,13 @@ export function Display() {
   return (
     <div className="flex min-h-screen flex-col bg-bg text-text">
       <header className="flex items-center gap-4 border-b border-border bg-panel px-7 py-4">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent font-serif text-[17px] font-semibold text-accent-ink">
-          C
-        </span>
+        {logoUrl ? (
+          <img src={logoUrl} alt="" className="h-8 w-8 shrink-0 rounded-lg bg-panel object-contain" />
+        ) : (
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent font-serif text-[17px] font-semibold text-accent-ink">
+            C
+          </span>
+        )}
         <span className="font-mono text-[12px] uppercase tracking-[0.16em] text-dim">
           {name || 'Kitchen display'} · Floor calls
         </span>
@@ -189,8 +210,13 @@ export function Display() {
           {new Date().toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })}
         </span>
         <div className="flex gap-2">
-          <IconButton onClick={toggleMute} aria-label={muted ? 'Unmute chime' : 'Mute chime'} title={muted ? 'Unmute chime' : 'Mute chime'}>
-            {muted ? <VolumeX /> : <Volume2 />}
+          <IconButton
+            onClick={toggleMute}
+            disabled={forcedMute}
+            aria-label={forcedMute ? 'Chime disabled in restaurant settings' : muted ? 'Unmute chime' : 'Mute chime'}
+            title={forcedMute ? 'Chime disabled in restaurant settings' : muted ? 'Unmute chime' : 'Mute chime'}
+          >
+            {forcedMute || muted ? <VolumeX /> : <Volume2 />}
           </IconButton>
           <IconButton onClick={() => document.documentElement.requestFullscreen?.()} aria-label="Fullscreen" title="Fullscreen">
             <Maximize />
@@ -234,6 +260,15 @@ export function Display() {
           </div>
         )}
       </main>
+
+      <a
+        className="fixed bottom-1.5 left-1/2 z-10 -translate-x-1/2 rounded bg-bg/70 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-dim transition-colors hover:text-muted"
+        href="https://complexai.co.za"
+        target="_blank"
+        rel="noopener"
+      >
+        Powered by <strong>Complex AI</strong>
+      </a>
     </div>
   );
 }
@@ -251,8 +286,15 @@ function RequestCard({ row, urgent, onAck }) {
         className="flex animate-pulse-ring flex-col rounded-2xl bg-accent p-6 text-left text-accent-ink"
         title={`Acknowledge table ${row.table_label}`}
       >
-        <div className="flex items-center justify-between">
-          <span className="font-mono text-[12px] uppercase tracking-[0.14em] opacity-85">{label}</span>
+        <div className="flex items-center justify-between gap-2">
+          <span className="flex items-center gap-2">
+            <span className="font-mono text-[12px] uppercase tracking-[0.14em] opacity-85">{label}</span>
+            {row.nudged_at && (
+              <span className="rounded-full border border-accent-ink/40 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] opacity-90">
+                Nudged
+              </span>
+            )}
+          </span>
           <Icon size={24} className="opacity-90" />
         </div>
         <span className="mt-auto pt-8 font-serif text-[52px] font-medium leading-none">Table {row.table_label}</span>
@@ -268,8 +310,15 @@ function RequestCard({ row, urgent, onAck }) {
       className={cn('flex flex-col rounded-2xl border p-6 text-left', isBill ? 'border-border-2 bg-panel' : 'border-border bg-raised')}
       title={`Acknowledge table ${row.table_label}`}
     >
-      <div className="flex items-center justify-between">
-        <span className={cn('font-mono text-[12px] uppercase tracking-[0.14em]', isBill ? 'text-ok' : 'text-accent')}>{label}</span>
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-2">
+          <span className={cn('font-mono text-[12px] uppercase tracking-[0.14em]', isBill ? 'text-ok' : 'text-accent')}>{label}</span>
+          {row.nudged_at && (
+            <span className="rounded-full bg-warn/15 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-warn">
+              Nudged
+            </span>
+          )}
+        </span>
         <Icon size={22} className={isBill ? 'text-ok' : 'text-accent'} />
       </div>
       <span className="mt-auto pt-8 font-serif text-[44px] font-medium leading-none">Table {row.table_label}</span>

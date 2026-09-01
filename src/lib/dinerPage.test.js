@@ -304,6 +304,24 @@ test('the burger is always present, regardless of whether info exists', () => {
   assert.ok(withoutInfo.includes('id="open-sheet"'));
 });
 
+test('phone back closes an open overlay instead of leaving the page', () => {
+  assert.ok(/addEventListener\(\s*['"]popstate['"]/.test(html), 'no popstate handler for the back gesture');
+  assert.ok(/new MutationObserver/.test(html), 'overlay open/close is not watched to drive history state');
+});
+
+// --- Branding: logo + accent color --------------------------------------------------------
+
+test('no logo_url renders no <img>, and the header still works', () => {
+  assert.ok(!html.includes('<img'));
+  assert.ok(/<h1>[^<]+<\/h1>/.test(html));
+});
+
+test('a logo_url renders as an <img>, escaped, alongside the name', () => {
+  const branded = renderPage({ restaurant: { ...restaurant, logo_url: 'https://cdn.example/"><script>x</script>' }, menu });
+  assert.match(branded, /<img class="logo" src="https:\/\/cdn\.example\/&quot;&gt;/);
+  assert.ok(!branded.includes('<script>x</script>'));
+});
+
 test('Share Menu always renders; Hours & Address only when something has been filled in', () => {
   assert.ok(withInfo.includes('id="share-menu"'));
   assert.ok(withInfo.includes('id="open-info"'));
@@ -359,6 +377,15 @@ test("lib/hours.js's status() reaches the client verbatim", () => {
   assert.ok(withInfo.includes("now.getUTCHours()"), 'the SAST conversion must ship, not a stub');
 });
 
+// --- QR scans -----------------------------------------------------------------------------
+// The menu route is cached 60s at a shared edge (routes/public.js), so a scan can only be counted
+// from the browser -- this pins that the beacon actually ships, unconditionally, with a fallback
+// for the one browser without sendBeacon.
+test('every render fires a scan beacon at the uncached /scan endpoint, with a post() fallback', () => {
+  assert.ok(html.includes("navigator.sendBeacon('/api/public/' + encodeURIComponent(slug) + '/scan')"));
+  assert.ok(html.includes("else post('/scan', {})"));
+});
+
 test('the info-modal badge exists hidden by default -- only client JS un-hides it', () => {
   assert.ok(/<p class="hours-badge" id="info-badge" hidden><\/p>/.test(withInfo));
 });
@@ -375,6 +402,7 @@ test('no service-request markup ships when the toggle is absent or false', () =>
   assert.ok(!html.includes('data-kind="waiter"'));
   assert.ok(!html.includes('data-kind="bill"'));
   assert.ok(!html.includes('id="table-ask"'));
+  assert.ok(!html.includes('id="manage-request"'));
   // Not a bare substring check: `body[data-service]{...}` in the CSS legitimately contains this
   // text unconditionally (it's the padding-bottom override, dead weight when unused but harmless).
   // What must be absent is the attribute actually landing on the <body> tag.
@@ -391,6 +419,12 @@ test('both buttons render when the toggle is on, and the body carries the paddin
 
 test('the table-number prompt exists and starts hidden', () => {
   assert.ok(/<div class="overlay" id="table-ask" hidden/.test(withService));
+});
+
+test('the manage-request dialog (nudge/cancel) exists, starts hidden, and offers both actions', () => {
+  const manage = /<div class="overlay" id="manage-request" hidden[\s\S]*?<\/div>\s*<\/div>/.exec(withService)[0];
+  assert.ok(manage.includes('id="manage-nudge"'));
+  assert.ok(manage.includes('id="manage-cancel"'));
 });
 
 test('the service buttons sit before Rate us in the footer, not inside the burger sheet', () => {

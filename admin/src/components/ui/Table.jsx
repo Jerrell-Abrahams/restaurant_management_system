@@ -5,19 +5,21 @@ import { cn } from './cn';
 // <table> and restyles to match: same 8px-radius bordered container, same --raised mono
 // header, same var(--rp) row rhythm, but every existing page keeps its markup. Column
 // ratios are a per-screen concern and belong on the <Th>, not in here.
-export function Table({ className, ...props }) {
+export function Table({ className, containerClassName, ...props }) {
   return (
     // ponytail: on a phone these scroll sideways rather than reflowing into per-row cards.
     // Ceiling is column count -- Leads and Finance are the widest. Build the card view when
     // one of those is genuinely unusable on a phone, not before.
-    <div className="overflow-x-auto rounded-lg border border-border bg-panel">
+    <div className={cn('overflow-x-auto rounded-lg border border-border bg-panel', containerClassName)}>
       <table className={cn('w-full border-collapse text-[13px]', className)} {...props} />
     </div>
   );
 }
 
-export function Thead(props) {
-  return <thead className="bg-raised" {...props} />;
+// className merges rather than replaces, so a caller can add a sticky top-0 header for a
+// table that scrolls internally (see Dishes.jsx) without losing the raised background.
+export function Thead({ className, ...props }) {
+  return <thead className={cn('bg-raised', className)} {...props} />;
 }
 
 // AnimatePresence lives here rather than at each call site so every table in the app gets

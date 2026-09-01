@@ -78,7 +78,7 @@ export function Feedback() {
           Nothing here yet. Feedback appears the moment a diner scans a coaster and rates something.
         </Card>
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="flex max-h-[65vh] flex-col gap-2 overflow-y-auto pr-1">
           {visits.map((v) => (
             <VisitRow
               key={v.id}

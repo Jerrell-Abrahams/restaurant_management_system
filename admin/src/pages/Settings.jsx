@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { toast } from 'sonner';
+import { ImagePlus, Loader2, Upload } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import * as api from '../api';
 import { Button } from '../components/ui/Button';
 import { Card, CardHeader, CardTitle } from '../components/ui/Card';
+import { cn } from '../components/ui/cn';
 import { Input, Field } from '../components/ui/Input';
 import { Select, SelectItem } from '../components/ui/Select';
 import { Stars } from '../components/ui/Stars';
@@ -15,6 +17,8 @@ export function Settings() {
   const { me } = useAuth();
   const [form, setForm] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const logoInputRef = useRef(null);
 
   useEffect(() => {
     if (restaurant) {
@@ -29,11 +33,52 @@ export function Settings() {
         hours: restaurant.hours || {},
         closedNote: restaurant.closed_note || '',
         serviceRequests: !!restaurant.service_requests_enabled,
+        autoDismissMinutes: String(restaurant.service_requests_auto_dismiss_minutes || 'off'),
+        chimeMuted: !!restaurant.service_requests_chime_muted,
+        logoUrl: restaurant.logo_url || '',
       });
     }
   }, [restaurant]);
 
   if (!form) return null;
+
+  // Sent as raw base64, not a data URL -- src/lib/logo.js decodes the field directly, the same
+  // shape the existing QR upload already uses for the same reason (no multipart-parsing dep in
+  // this codebase). Uploads immediately on pick rather than waiting for Save: a preview that isn't
+  // actually saved yet would be a second, silent kind of unsaved-changes state on this page.
+  async function pickLogo(e) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // lets picking the same file again re-fire onChange
+    if (!file) return;
+
+    setUploadingLogo(true);
+    try {
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const { logoUrl } = await api.uploadLogo(restaurantId, base64);
+      setForm((f) => ({ ...f, logoUrl }));
+      reload();
+      toast.success('Logo updated');
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setUploadingLogo(false);
+    }
+  }
+
+  async function removeLogo() {
+    try {
+      await api.updateRestaurant(restaurantId, { logoUrl: null });
+      setForm((f) => ({ ...f, logoUrl: '' }));
+      reload();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
 
   async function save(e) {
     e.preventDefault();
@@ -56,6 +101,69 @@ export function Settings() {
       <Card className="mb-4 p-0">
         <CardHeader><CardTitle>Restaurant</CardTitle></CardHeader>
         <div className="flex flex-col gap-3 p-4">
+          <div>
+            <p className="mb-2 text-xs font-medium text-text/70">Logo</p>
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                onClick={() => logoInputRef.current?.click()}
+                disabled={uploadingLogo}
+                title={form.logoUrl ? 'Replace logo' : 'Upload logo'}
+                className={cn(
+                  'group relative h-24 w-24 shrink-0 overflow-hidden rounded-full bg-panel transition-colors',
+                  'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
+                  'disabled:cursor-not-allowed disabled:opacity-60',
+                  form.logoUrl ? 'border border-border-2' : 'border border-dashed border-border-2 hover:border-accent/50'
+                )}
+              >
+                {form.logoUrl ? (
+                  <>
+                    {/* contain + padding, not cover -- a wordmark or a non-square logo would
+                        otherwise get cropped or zoomed to fill a circle it was never designed
+                        for. The circle is a frame around the logo here, not a mask over it. */}
+                    <img src={form.logoUrl} alt="" className="h-full w-full object-contain p-3" />
+                    {/* Hover affordance on a filled thumbnail, permanent overlay while a request is
+                        in flight -- the same "something is happening" spinner Button uses
+                        elsewhere, just anchored to the thing being replaced instead of the trigger. */}
+                    <span
+                      className={cn(
+                        'pointer-events-none absolute inset-0 flex items-center justify-center bg-bg/75 text-text opacity-0 transition-opacity',
+                        uploadingLogo ? 'opacity-100' : 'group-hover:opacity-100'
+                      )}
+                    >
+                      {uploadingLogo ? <Loader2 size={22} className="animate-spin" /> : <Upload size={22} />}
+                    </span>
+                  </>
+                ) : (
+                  // One icon, not two stacked layers -- the filled state above needs a hover
+                  // overlay ON TOP of the image, but an empty circle has nothing under it to
+                  // overlay, so it just swaps in place instead.
+                  <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-dim transition-colors group-hover:text-accent">
+                    {uploadingLogo ? <Loader2 size={28} className="animate-spin" /> : <ImagePlus size={28} />}
+                  </span>
+                )}
+              </button>
+              <input
+                ref={logoInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={pickLogo}
+              />
+              <div className="flex flex-col gap-1">
+                <span className="text-[12.5px] text-text">
+                  {form.logoUrl ? 'Click the logo to replace it' : 'Shown next to your name at the top of the menu'}
+                </span>
+                <span className="text-[11px] text-dim">PNG, JPEG or WEBP, up to 750KB — saved immediately</span>
+                {form.logoUrl && (
+                  <button type="button" onClick={removeLogo} className="w-fit text-[11.5px] text-bad hover:underline">
+                    Remove logo
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
           <Field label="Name">
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
@@ -148,6 +256,29 @@ export function Settings() {
             to reach a phone that scans after you change it — and a phone that already has the menu
             open keeps whatever it last loaded either way.
           </p>
+          {form.serviceRequests && (
+            <Field
+              label="Clear requests from the display"
+              hint={form.autoDismissMinutes === 'off' ? undefined : 'A request still clears itself early if a staff member taps it.'}
+            >
+              <Select value={form.autoDismissMinutes} onValueChange={(v) => setForm({ ...form, autoDismissMinutes: v })}>
+                <SelectItem value="off">Staff dismiss only</SelectItem>
+                {[5, 10, 15, 20, 30].map((n) => (
+                  <SelectItem key={n} value={String(n)}>Auto-dismiss after {n} min</SelectItem>
+                ))}
+              </Select>
+            </Field>
+          )}
+          {form.serviceRequests && (
+            <label className="flex items-center gap-2.5 text-[13px] text-text">
+              <input
+                type="checkbox"
+                checked={form.chimeMuted}
+                onChange={(e) => setForm({ ...form, chimeMuted: e.target.checked })}
+              />
+              Always mute the kitchen display chime
+            </label>
+          )}
           {restaurant.service_requests_enabled && (
             <Button
               type="button"

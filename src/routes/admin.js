@@ -1,16 +1,20 @@
 const express = require('express');
+const supabase = require('../config/supabase');
 const { db } = require('../config/supabase');
 const auth = require('../middleware/adminAuth');
 const { requireAdmin } = require('../middleware/adminAuth');
 const { resolve } = require('../lib/restaurants');
 const { normalizeSlug, slugError } = require('../lib/slug');
 const { parsePrice } = require('../lib/money');
-const { summarize, leaderboards, MIN_RATINGS } = require('../lib/dishes');
+const { summarize, leaderboards, categoryBoard, MIN_RATINGS } = require('../lib/dishes');
 const { summarizeOverview } = require('../lib/overview');
+const { buildAnalytics, WINDOW_DAYS } = require('../lib/analytics');
 const qr = require('../lib/qr');
 const { hoursError } = require('../lib/hours');
 const { allergensError, dietError, spiceLevelOf } = require('../lib/dietary');
 const { promoLabelError } = require('../lib/promotions');
+const { decodeLogo } = require('../lib/logo');
+const { ACCENT_PRESETS } = require('../lib/brandPresets');
 
 const router = express.Router();
 router.use(auth);
@@ -120,6 +124,22 @@ router.patch('/restaurants/:id', async (req, res) => {
   // Owner's own floor operation, not admin-gated -- same reasoning as address/hours above: the
   // failure mode of a wrong value here is "the buttons are on or off", not a wrong review link.
   if ('serviceRequests' in req.body) patch.service_requests_enabled = !!req.body.serviceRequests;
+  // Null = staff dismiss only. See service_request_auto_dismiss.sql for why a number reaches the
+  // display through the poll rather than a new cron.
+  if ('autoDismissMinutes' in req.body) {
+    const n = Number(req.body.autoDismissMinutes);
+    patch.service_requests_auto_dismiss_minutes = n > 0 ? Math.min(180, Math.round(n)) : null;
+  }
+  // Hard lock, not a default -- browser autoplay can't force sound ON for a device that hasn't
+  // unmuted itself, so this is the only direction a restaurant-wide chime setting can guarantee.
+  if ('chimeMuted' in req.body) patch.service_requests_chime_muted = !!req.body.chimeMuted;
+
+  // Branding. logoUrl is normally only ever written by POST .../logo below; PATCHing it directly
+  // is how "remove logo" clears it, the same escape hatch every other nullable text field here has.
+  if ('logoUrl' in req.body) patch.logo_url = req.body.logoUrl || null;
+  if ('accentColor' in req.body) {
+    patch.accent_color = Object.hasOwn(ACCENT_PRESETS, req.body.accentColor) ? req.body.accentColor : null;
+  }
 
   if (req.isAdmin) {
     if ('googlePlaceId' in req.body) patch.google_place_id = req.body.googlePlaceId || null;
@@ -137,11 +157,42 @@ router.patch('/restaurants/:id', async (req, res) => {
   res.json(data);
 });
 
+// --- Branding: logo --------------------------------------------------------------------------
+//
+// Base64 in the JSON body, not multipart -- same shape as the QR upload above, and this codebase
+// has no multipart-parsing code to reuse. Stored in Supabase Storage (not a DB column, unlike
+// qr_codes) because a logo is re-served on every diner's menu load, not downloaded once by an
+// admin: a public object URL means Storage's own CDN serves it, not this API.
+router.post('/restaurants/:id/logo', async (req, res) => {
+  const ctx = await resolve(req, res, { write: true });
+  if (!ctx) return;
+
+  const { error: badImage, bytes, mime } = decodeLogo(req.body.image);
+  if (badImage) return res.status(400).json({ error: badImage });
+
+  // Fixed, extension-free path with upsert: true -- always overwrites the same object even if the
+  // format changes between uploads, so switching PNG -> JPEG never leaves an orphaned file behind.
+  const { error: uploadError } = await supabase.storage
+    .from('branding')
+    .upload(ctx.restaurant.id, bytes, { contentType: mime, upsert: true });
+  if (uploadError) return res.status(500).json({ error: uploadError.message });
+
+  const { data: { publicUrl } } = supabase.storage.from('branding').getPublicUrl(ctx.restaurant.id);
+  // Cache-busted so the header updates the moment this response lands, rather than however long a
+  // diner's browser had cached the previous logo under this same URL.
+  const logoUrl = `${publicUrl}?v=${Date.now()}`;
+
+  const { error } = await db.from('restaurants').update({ logo_url: logoUrl }).eq('id', ctx.restaurant.id);
+  if (error) return res.status(500).json({ error: error.message });
+
+  res.json({ logoUrl });
+});
+
 // --- Overview ------------------------------------------------------------------------------
 
 // The dashboard's numbers in one request: today's count, the all-time average, how many open
-// issues need a response, and the most recent three of those in full. Everything here is real
-// -- there is no scan-tracking table, so there is deliberately no "scans" or "run rate" figure.
+// issues need a response, the most recent three of those in full, and how many times the QR code
+// has been scanned (today, and lifetime).
 router.get('/restaurants/:id/summary', async (req, res) => {
   const ctx = await resolve(req, res);
   if (!ctx) return;
@@ -168,7 +219,46 @@ router.get('/restaurants/:id/summary', async (req, res) => {
     summary.urgent = summary.urgent.map((v) => ({ ...v, itemCount: counts.get(v.id) || 0 }));
   }
 
+  // Counted, not fetched -- qr_scans can hold 30 days of one row per page load, and nothing here
+  // needs the rows themselves. UTC day boundary, same reasoning as summarizeOverview's todayCount:
+  // deterministic regardless of which timezone the process happens to run in.
+  const todayStartIso = new Date(Math.floor(Date.now() / 86400000) * 86400000).toISOString();
+  const [{ count: scansToday }, { count: totalScans }] = await Promise.all([
+    db.from('qr_scans').select('*', { count: 'exact', head: true })
+      .eq('restaurant_id', ctx.restaurant.id).gte('created_at', todayStartIso),
+    db.from('qr_scans').select('*', { count: 'exact', head: true })
+      .eq('restaurant_id', ctx.restaurant.id),
+  ]);
+  summary.scansToday = scansToday || 0;
+  summary.totalScans = totalScans || 0;
+
   res.json(summary);
+});
+
+// Fixed 30-day window, matching qr_scans' own retention (routes/cron.js purges past that) --
+// a longer range would show ratings trending back further than scans ever can.
+router.get('/restaurants/:id/analytics', async (req, res) => {
+  const ctx = await resolve(req, res);
+  if (!ctx) return;
+
+  const windowStartIso = new Date(Math.floor(Date.now() / 86400000) * 86400000 - (WINDOW_DAYS - 1) * 86400000).toISOString();
+
+  const [{ data: scans, error: scansErr }, { data: visits, error: visitsErr }, { data: requests, error: requestsErr }] = await Promise.all([
+    db.from('qr_scans').select('created_at')
+      .eq('restaurant_id', ctx.restaurant.id).gte('created_at', windowStartIso),
+    db.from('visits').select('rating, created_at')
+      .eq('restaurant_id', ctx.restaurant.id).not('rating', 'is', null).gte('created_at', windowStartIso),
+    // Skipped entirely for restaurants that never turned the feature on -- no point querying a
+    // table that will only ever answer zero rows for them.
+    ctx.restaurant.service_requests_enabled
+      ? db.from('service_requests').select('kind, created_at').eq('restaurant_id', ctx.restaurant.id).gte('created_at', windowStartIso)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (scansErr) return res.status(500).json({ error: scansErr.message });
+  if (visitsErr) return res.status(500).json({ error: visitsErr.message });
+  if (requestsErr) return res.status(500).json({ error: requestsErr.message });
+
+  res.json(buildAnalytics(scans, visits, requests));
 });
 
 // --- Menu --------------------------------------------------------------------------------
@@ -468,13 +558,13 @@ router.get('/restaurants/:id/dishes', async (req, res) => {
   const ctx = await resolve(req, res);
   if (!ctx) return;
 
-  const { data: cats } = await db.from('menu_categories').select('id').eq('restaurant_id', ctx.restaurant.id);
+  const { data: cats } = await db.from('menu_categories').select('id, name').eq('restaurant_id', ctx.restaurant.id).order('position');
   const catIds = (cats || []).map((c) => c.id);
-  if (!catIds.length) return res.json({ dishes: [], boards: leaderboards([]), minRatings: MIN_RATINGS });
+  if (!catIds.length) return res.json({ dishes: [], boards: { ...leaderboards([]), byCategory: [] }, minRatings: MIN_RATINGS });
 
   const { data: items } = await db
     .from('menu_items')
-    .select('id, name, archived_at')
+    .select('id, name, category_id, archived_at')
     .in('category_id', catIds);
 
   const { data: ratings } = items.length
@@ -484,7 +574,7 @@ router.get('/restaurants/:id/dishes', async (req, res) => {
   const dishes = summarize(items || [], ratings || []);
   res.json({
     dishes: dishes.sort((a, b) => b.count - a.count),
-    boards: leaderboards(dishes),
+    boards: { ...leaderboards(dishes), byCategory: categoryBoard(cats, items || [], ratings || []) },
     minRatings: MIN_RATINGS,
   });
 });
@@ -548,18 +638,31 @@ router.get('/restaurants/:id/qr', async (req, res) => {
 // Call waiter / request bill, raised from the diner menu (routes/public.js) and cleared here.
 // Polled by admin/src/pages/Display.jsx every 5s -- kept to one query on purpose.
 
-// No time filter: staleness is handled once, by cron's sweepServiceRequests (routes/cron.js), by
-// acknowledging old rows -- not by hiding them here. The dedupe index in service_requests.sql
-// keys on acknowledged_at is null, so filtering an old-but-still-open row out of this list would
-// let it silently keep blocking that table+kind from ever raising another card while diners kept
-// getting told "ok".
+// Staleness is handled by acknowledging old rows, never by hiding them here. The dedupe index in
+// service_requests.sql keys on acknowledged_at is null, so filtering an old-but-still-open row out
+// of this list would let it silently keep blocking that table+kind from ever raising another card
+// while diners kept getting told "ok". Absent a restaurant-configured auto-dismiss, cron's fixed
+// 4h sweepServiceRequests (routes/cron.js) is the only backstop; with one set, the acknowledge
+// below rides this same poll instead, so a display sitting open clears itself on schedule without
+// a dedicated cron (Vercel Hobby allows only one).
 router.get('/restaurants/:id/service-requests', async (req, res) => {
   const ctx = await resolve(req, res);
   if (!ctx) return;
 
+  const autoDismissMinutes = ctx.restaurant.service_requests_auto_dismiss_minutes;
+  if (autoDismissMinutes) {
+    const cutoff = new Date(Date.now() - autoDismissMinutes * 60000).toISOString();
+    await db
+      .from('service_requests')
+      .update({ acknowledged_at: new Date().toISOString() })
+      .eq('restaurant_id', ctx.restaurant.id)
+      .is('acknowledged_at', null)
+      .lt('created_at', cutoff); // created_at only -- never nudged_at, see service_request_nudge.sql
+  }
+
   const { data, error } = await db
     .from('service_requests')
-    .select('id, table_label, kind, created_at')
+    .select('id, table_label, kind, created_at, nudged_at')
     .eq('restaurant_id', ctx.restaurant.id)
     .is('acknowledged_at', null)
     .order('created_at');

@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { summarize, leaderboards } = require('./dishes');
+const { summarize, leaderboards, categoryBoard } = require('./dishes');
 
 const NOW = new Date('2026-08-26T12:00:00Z').getTime();
 const DAY = 86400000;
@@ -134,4 +134,38 @@ test('best and worst are opposite ends of the same ordering', () => {
 test('a rating for a dish that no longer exists is skipped, not fatal', () => {
   const rows = summarize(items, [rating('ghost-dish', 5, 1), rating('calamari', 4, 1)], { now: NOW });
   assert.strictEqual(rows.find((r) => r.id === 'calamari').count, 1);
+});
+
+// --- Category board ------------------------------------------------------------------------
+
+const categories = [{ id: 'starters', name: 'Starters' }, { id: 'mains', name: 'Mains' }, { id: 'desserts', name: 'Desserts' }];
+const menuItems = [
+  { id: 'calamari', category_id: 'starters' },
+  { id: 'ribs', category_id: 'mains' },
+  { id: 'wings', category_id: 'starters' },
+  { id: 'oldcurry', category_id: 'mains' },
+];
+
+test('ratings roll up to their dish\'s category', () => {
+  const ratings = [rating('calamari', 5, 1), rating('calamari', 3, 2), rating('wings', 4, 1), rating('ribs', 2, 1)];
+  const board = categoryBoard(categories, menuItems, ratings);
+  const starters = board.find((c) => c.id === 'starters');
+  assert.strictEqual(starters.count, 3);
+  assert.strictEqual(starters.average, 4);
+  assert.strictEqual(board.find((c) => c.id === 'mains').count, 1);
+});
+
+test('archived dishes still count toward their category -- history is not rewritten', () => {
+  const board = categoryBoard(categories, menuItems, [rating('oldcurry', 5, 20)]);
+  assert.strictEqual(board.find((c) => c.id === 'mains').count, 1);
+});
+
+test('a category with zero ratings is omitted, not shown as a zero', () => {
+  const board = categoryBoard(categories, menuItems, [rating('calamari', 5, 1)]);
+  assert.strictEqual(board.find((c) => c.id === 'desserts'), undefined);
+});
+
+test('a rating for a dish outside the given category set is skipped, not fatal', () => {
+  const board = categoryBoard(categories, menuItems, [rating('ghost-dish', 5, 1)]);
+  assert.deepStrictEqual(board, []);
 });

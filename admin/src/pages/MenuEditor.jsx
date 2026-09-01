@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Plus, Trash2, Archive, RotateCcw, GripVertical, Flame } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Plus, Trash2, Archive, RotateCcw, GripVertical, Flame, ChevronDown, ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
 import { toast } from 'sonner';
 import * as api from '../api';
 import { Button, IconButton } from '../components/ui/Button';
@@ -38,6 +39,7 @@ export function MenuEditor() {
   const [itemSaving, setItemSaving] = useState(false);
   const [dragging, setDragging] = useState(null); // { categoryId, index }
   const [catDragging, setCatDragging] = useState(null); // index of the section being dragged
+  const [collapsed, setCollapsed] = useState(() => new Set()); // category ids hidden from view, not from the server
 
   const load = useCallback(() => {
     api.getMenu(restaurantId).then(setMenu).catch((err) => toast.error(err.message));
@@ -95,6 +97,24 @@ export function MenuEditor() {
     }
   }
 
+  function toggleCollapse(id) {
+    setCollapsed((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // Every section is open by default (an empty set), so "all collapsed" is the one state worth
+  // naming explicitly -- everything else, including a mix of open and closed sections, reads as
+  // "collapse all" on the header button rather than "expand all".
+  // Checked by membership, not by size against collapsed -- collapsed can hold the id of a
+  // section that's since been deleted, and a size comparison would then never agree again even
+  // though every section still on screen is collapsed.
+  const allCollapsed = menu?.length > 0 && menu.every((c) => collapsed.has(c.id));
+  const toggleCollapseAll = () => setCollapsed(allCollapsed ? new Set() : new Set(menu.map((c) => c.id)));
+
   const run = async (fn, msg) => {
     try {
       await fn();
@@ -114,6 +134,11 @@ export function MenuEditor() {
       <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-serif text-[26px] font-medium tracking-[-0.015em]">Menu</h1>
         <div className="flex gap-2">
+          {menu.length > 1 && (
+            <Button variant="ghost" onClick={toggleCollapseAll} title={allCollapsed ? 'Expand all sections' : 'Collapse all sections'}>
+              {allCollapsed ? <ChevronsUpDown /> : <ChevronsDownUp />} {allCollapsed ? 'Expand all' : 'Collapse all'}
+            </Button>
+          )}
           <Button variant="ghost" onClick={() => setShowArchived(!showArchived)} title={showArchived ? 'Hide archived dishes' : 'Show archived dishes'}>
             {showArchived ? 'Hide archived' : 'Show archived'}
           </Button>
@@ -147,6 +172,14 @@ export function MenuEditor() {
               >
                 <div className="flex min-w-0 items-center gap-2">
                   <GripVertical size={14} className="shrink-0 text-dim" />
+                  <IconButton
+                    variant="ghost"
+                    aria-label={collapsed.has(cat.id) ? `Expand ${cat.name}` : `Collapse ${cat.name}`}
+                    title={collapsed.has(cat.id) ? `Expand ${cat.name}` : `Collapse ${cat.name}`}
+                    onClick={() => toggleCollapse(cat.id)}
+                  >
+                    <ChevronDown className={cn('transition-transform', collapsed.has(cat.id) && '-rotate-90')} />
+                  </IconButton>
                   <button onClick={() => setCatModal({ id: cat.id, name: cat.name, hours: cat.hours })} className="flex items-center gap-2 text-left" title={`Edit ${cat.name}`}>
                     <CardTitle>{cat.name}</CardTitle>
                     {isPaused(cat.hours) && (
@@ -168,10 +201,21 @@ export function MenuEditor() {
                 </div>
               </CardHeader>
 
-              {visibleItems.length === 0 ? (
-                <p className="px-4 py-5 text-[12.5px] text-dim">No dishes in this section.</p>
-              ) : (
-                cat.items.map((item, idx) => {
+              <AnimatePresence initial={false}>
+                {!collapsed.has(cat.id) && (
+                  <motion.div
+                    key="items"
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2, ease: 'easeInOut' }}
+                    style={{ overflow: 'hidden' }}
+                  >
+                    {visibleItems.length === 0 ? (
+                      <p className="px-4 py-5 text-[12.5px] text-dim">No dishes in this section.</p>
+                    ) : (
+                      <div className="max-h-[420px] overflow-y-auto">
+                {cat.items.map((item, idx) => {
                   if (!showArchived && item.archived_at) return null;
                   return (
                   <div
@@ -257,8 +301,12 @@ export function MenuEditor() {
                     </IconButton>
                   </div>
                   );
-                })
-              )}
+                })}
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </Card>
           );
         })}

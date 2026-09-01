@@ -52,6 +52,17 @@ async function sweepServiceRequests(now = Date.now()) {
   return (staled || []).length;
 }
 
+// Housekeeping, not a legal obligation -- there is no personal information in this table, just a
+// salted ip_hash (COMPLIANCE.md 5). Same posture as service_requests' own retention sweep above:
+// purged purely to keep the table small.
+const QR_SCAN_RETENTION_DAYS = 30;
+
+async function purgeScans(now = Date.now()) {
+  const cutoff = new Date(now - QR_SCAN_RETENTION_DAYS * 86400000).toISOString();
+  const { error } = await db.from('qr_scans').delete().lt('created_at', cutoff);
+  if (error) throw new Error(`scan purge failed: ${error.message}`);
+}
+
 // The backstop for the one case the on-submit debounce misses: a burst whose final bad rating
 // lands inside the fifteen-minute window and is never followed by another submission, so nothing
 // ever triggers the send. Calling maybeAlert here is safe and idempotent -- it debounces and
@@ -108,6 +119,12 @@ router.get('/daily', async (req, res) => {
     out.staled = await sweepServiceRequests();
   } catch (err) {
     console.error('[cron] service-request sweep failed:', err.message);
+  }
+
+  try {
+    await purgeScans();
+  } catch (err) {
+    console.error('[cron] scan purge failed:', err.message);
   }
 
   // Keeps the Supabase free tier from pausing after seven idle days. A live restaurant's coasters

@@ -100,7 +100,7 @@ html{scroll-behavior:smooth}
 body{margin:0;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;
   font-family:var(--sans);font-weight:300;padding-bottom:112px}
 /* Extra footer height for the service-request row -- only paid by restaurants that have it on. */
-body[data-service]{padding-bottom:172px}
+body[data-service]{padding-bottom:188px}
 header{position:sticky;top:0;z-index:6;background:var(--header-bg);
   -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
   border-bottom:1px solid var(--hair);padding:18px 18px 16px}
@@ -109,6 +109,17 @@ header{position:sticky;top:0;z-index:6;background:var(--header-bg);
    -- flex's baseline forwarding would synthesize one from an SVG's box edge instead, which does
    not land in the same place. Center is the reference point icons and a heading actually share. */
 .head-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+/* Groups the logo and name as one flex item, same reason .head-actions groups the theme toggle
+   and burger -- .head-row's space-between only has two things to spread apart, not three. */
+.head-id{display:flex;align-items:center;gap:10px;min-width:0}
+.head-text{display:flex;flex-direction:column;min-width:0}
+/* Fixed footprint regardless of the uploaded file's own pixel size -- there is no server-side
+   resizing (src/lib/logo.js only validates bytes and format), so the display size has to be the
+   thing holding the line. contain, not cover: cover crops a non-square logo (a wordmark, anything
+   not 1:1) to fill the box, which reads as the logo being cut off. */
+/* Fixed dark chip, not var(--panel) -- panel flips to a light cream in light mode, which a white
+   or light-colored uploaded logo (the common case) would disappear against. */
+.logo{flex:0 0 auto;width:32px;height:32px;border-radius:8px;object-fit:contain;background:#1a1815}
 h1{margin:0;font-family:var(--serif);font-size:24.5px;font-weight:500;line-height:1;
   color:var(--heading)}
 /* Groups the theme toggle and the burger as one flex item so space-between above still puts a
@@ -121,7 +132,7 @@ h1{margin:0;font-family:var(--serif);font-size:24.5px;font-weight:500;line-heigh
 .theme-toggle{flex:0 0 auto;width:44px;height:44px;display:flex;align-items:center;
   justify-content:center;border-radius:7px;border:0;background:none;color:var(--muted);
   cursor:pointer;-webkit-tap-highlight-color:transparent}
-.sub{margin:8px 0 0;font-size:10px;letter-spacing:.34em;text-transform:uppercase;
+.sub{margin:2px 0 0;font-size:10px;letter-spacing:.34em;text-transform:uppercase;
   color:var(--accent)}
 /* Hidden by default and only ever un-hidden client-side, in the inline script below -- the page
    is cached 60s at a shared edge (routes/public.js), so a status baked in at render time could
@@ -284,7 +295,12 @@ footer{position:fixed;left:0;right:0;bottom:0;z-index:7;padding:16px 18px 26px;
    also reachable from the burger sheet below (same data-kind, same handlers) as a second, quieter
    path -- not a replacement: burying them there alone would make "Request bill" undiscoverable on
    first visit. */
-.cta-row{pointer-events:auto;display:flex;gap:8px}
+.cta-row{pointer-events:auto;display:flex;gap:8px;align-items:flex-start}
+/* Wraps a service button + its status line so the two stack under equal-width columns --
+   .cta-btn's own flex:1 sizes it against Rate us, an unwrapped sibling in the same row. */
+.cta-col{flex:1;min-width:0}
+.cta-col .cta-btn{flex:none;width:100%}
+.cta-status{margin:4px 0 0;font-size:10px;letter-spacing:.04em;text-align:center;color:var(--accent)}
 .cta-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:5px;height:60px;border-radius:11px;border:1px solid var(--cta-border);
   background:var(--cta-bg);color:var(--cta-ink);font:inherit;font-size:9.5px;
@@ -320,6 +336,9 @@ textarea.field{resize:vertical;min-height:96px;font-family:inherit}
   border:1px solid var(--border);background:none;color:var(--dim);font:inherit;font-size:15px;
   cursor:pointer}
 .empty{padding:36px 18px;color:var(--dim);font-size:14px}
+.powered-by{margin:0;padding:22px 18px 8px;text-align:center;font-size:9px;letter-spacing:.08em;
+  color:var(--dim)}
+.powered-by a{color:inherit;text-decoration:none}
 
 /* The burger sheet and the info modal both reuse .overlay -- see the block below it in the
    markup for why a second full-screen pattern was not worth building for two menu rows.
@@ -730,13 +749,18 @@ function renderPage({ restaurant, menu }) {
       ${serviceEnabled ? 'data-service' : ''}>
 <header>
   <div class="head-row">
-    <h1>${esc(restaurant.name)}</h1>
+    <div class="head-id">
+      ${restaurant.logo_url ? `<img class="logo" src="${esc(restaurant.logo_url)}" alt="">` : ''}
+      <div class="head-text">
+        <h1>${esc(restaurant.name)}</h1>
+        <p class="sub">Menu</p>
+      </div>
+    </div>
     <div class="head-actions">
       <button class="theme-toggle" type="button" id="theme-toggle" aria-label="Switch theme">${ICON_MOON}</button>
       <button class="burger" type="button" id="open-sheet" aria-label="More options" aria-haspopup="true">☰</button>
     </div>
   </div>
-  <p class="sub">Menu</p>
 </header>
 ${chips}
 ${sections || '<p class="empty">This menu is being set up.</p>'}
@@ -746,8 +770,8 @@ ${hasFilters ? '<p class="empty" id="no-hits" hidden>Nothing on the menu matches
   <div class="cta-row">
     ${
       serviceEnabled
-        ? `<button class="cta-btn" type="button" data-kind="waiter">${ICON_BELL}<span class="label">Call waiter</span></button>
-    <button class="cta-btn" type="button" data-kind="bill">${ICON_RECEIPT}<span class="label">Request bill</span></button>`
+        ? `<div class="cta-col"><button class="cta-btn" type="button" data-kind="waiter">${ICON_BELL}<span class="label">Call waiter</span></button><p class="cta-status" hidden></p></div>
+    <div class="cta-col"><button class="cta-btn" type="button" data-kind="bill">${ICON_RECEIPT}<span class="label">Request bill</span></button><p class="cta-status" hidden></p></div>`
         : ''
     }
     <button class="cta-btn" type="button" id="open-visit"><span class="cta-star" aria-hidden="true">★</span><span class="label">Rate us</span></button>
@@ -767,6 +791,15 @@ ${
     <input class="field" id="table-input" type="text" inputmode="numeric" maxlength="12"
            autocomplete="off" placeholder="12" aria-label="Table number">
     <button class="btn" type="button" id="table-go" disabled>Send</button>
+  </div>
+</div>
+<div class="overlay" id="manage-request" hidden role="dialog" aria-modal="true" aria-labelledby="manage-h">
+  <button class="close" type="button" id="close-manage" aria-label="Close">✕</button>
+  <div>
+    <h2 id="manage-h">Already sent</h2>
+    <p id="manage-body"></p>
+    <button class="btn" type="button" id="manage-nudge">Nudge them again</button>
+    <button class="btn btn-ghost" type="button" id="manage-cancel">Cancel request</button>
   </div>
 </div>`
     : ''
@@ -866,6 +899,7 @@ ${
       </div>
     </section>
     <p class="copied" id="share-copied" hidden>Link copied</p>
+    <p class="powered-by">Powered by <a href="https://complexai.co.za" target="_blank" rel="noopener">Complex AI</a></p>
   </div>
 </div>
 
@@ -912,6 +946,19 @@ ${
       credentials:'same-origin', body:JSON.stringify(body)
     });
   }
+
+  function del(path){
+    return fetch('/api/public/' + encodeURIComponent(slug) + path, {
+      method:'DELETE', credentials:'same-origin'
+    });
+  }
+
+  // Counts this load as a scan. Fired unconditionally, cache hit or not -- the HTML itself sits
+  // behind a 60s shared cache (routes/public.js), so counting server-side in that route would
+  // undercount almost every real scan. sendBeacon survives the diner tapping away immediately
+  // after landing; post() is the fallback for the one browser without it.
+  if(navigator.sendBeacon) navigator.sendBeacon('/api/public/' + encodeURIComponent(slug) + '/scan');
+  else post('/scan', {});
 
   // Restarts a one-shot keyframe class. Removing and re-adding is not enough on its own -- the
   // layout read wedged in between is what actually resets the animation.
@@ -1096,6 +1143,40 @@ ${
     }
   });
 
+  // Phone back gesture should dismiss whatever overlay is open -- the burger sheet, the info
+  // modal, any of the others -- rather than leaving the page. Most diners land here straight from
+  // the camera app's QR prompt, so this document is the only entry in tab history and a bare back
+  // closes the browser, not "goes anywhere". Generic over every .overlay instead of one push/pop
+  // per dialog: dialogs already collapse "something else is open" into one state (see the info
+  // modal's own comment below), so a new overlay needs no extra wiring here.
+  (function(){
+    var overlays = document.querySelectorAll('.overlay');
+    var pushed = false;
+
+    function isOpen(){
+      for(var i = 0; i < overlays.length; i++) if(!overlays[i].hidden) return true;
+      return false;
+    }
+
+    var observer = new MutationObserver(function(){
+      var open = isOpen();
+      if(open && !pushed){
+        pushed = true;
+        history.pushState({ overlay: true }, '');
+      } else if(!open && pushed){
+        pushed = false;
+        history.back();
+      }
+    });
+    overlays.forEach(function(el){ observer.observe(el, { attributes: true, attributeFilter: ['hidden'] }); });
+
+    window.addEventListener('popstate', function(){
+      if(!pushed) return;
+      pushed = false;
+      overlays.forEach(function(el){ el.hidden = true; });
+    });
+  })();
+
   var sheet = document.getElementById('sheet');
   var info = document.getElementById('info');
 
@@ -1223,7 +1304,7 @@ ${
     var tableKey = 'rt:' + slug;
     // 4h, matching the visit cookie's TTL in routes/public.js, for the same reason: long enough
     // for a leisurely meal, short enough that tomorrow's diner on a shared family phone does not
-    // inherit last night's table.
+    // inherit last night's table. Request memory below reuses the same window.
     var TABLE_TTL = 4 * 60 * 60 * 1000;
     var pendingKind = null;
     var LABELS = { waiter: 'Call waiter', bill: 'Request bill' };
@@ -1240,10 +1321,42 @@ ${
       try { localStorage.setItem(tableKey, JSON.stringify({ v: v, t: Date.now() })); } catch(e){}
     }
 
+    // The id of an open request this browser itself just sent, one slot per kind. Lets a repeat
+    // tap open the manage dialog below instead of blindly resending -- see routes/public.js's
+    // nudge/cancel routes, which are the actual source of truth on whether it is still open.
+    function requestKey(kind){ return 'rq:' + kind + ':' + slug; }
+    function rememberedRequest(kind){
+      try {
+        var r = JSON.parse(localStorage.getItem(requestKey(kind)) || 'null');
+        return (r && Date.now() - r.t < TABLE_TTL) ? r : null;
+      } catch(e){ return null; }
+    }
+    function rememberRequest(kind, id){
+      try { localStorage.setItem(requestKey(kind), JSON.stringify({ id: id, t: Date.now() })); } catch(e){}
+    }
+    function forgetRequest(kind){
+      try { localStorage.removeItem(requestKey(kind)); } catch(e){}
+    }
+
     // Every element sharing this data-kind -- the footer pill and the sheet row are the same
-    // request wearing two hats, and both must show the same label/disabled state at once.
+    // request wearing two hats, and both must show the same disabled state at once, but not the
+    // same text treatment: the sheet row swaps its own title in place (setLabel), while the
+    // footer pill keeps "Call waiter"/"Request bill" fixed and reports status in the .cta-status
+    // line underneath instead -- swapping the pill's own label read as the button changing
+    // purpose, not confirming an action.
     function ofKind(kind){ return document.querySelectorAll('[data-kind="' + kind + '"]'); }
     function setLabel(el, text){ (el.querySelector('.label') || el).textContent = text; }
+    function applyStatus(el, text){
+      if(el.classList.contains('sheet-row')) return setLabel(el, text);
+      var cap = el.parentElement.querySelector('.cta-status');
+      if(cap){ cap.textContent = text || ''; cap.hidden = !text; }
+    }
+    function resetKind(kind){
+      ofKind(kind).forEach(function(el){
+        applyStatus(el, el.classList.contains('sheet-row') ? LABELS[kind] : '');
+        el.disabled = false;
+      });
+    }
 
     // NOT optimistic, unlike the item ratings above. A rating that silently failed costs a data
     // point; a bill request that silently failed leaves someone waiting for a waiter who was
@@ -1253,33 +1366,113 @@ ${
       els.forEach(function(el){ el.disabled = true; });
       post('/service-request', { kind: kind, table: table }).then(function(res){
         if(!res.ok) throw new Error();
+        return res.json();
+      }).then(function(body){
+        if(body && body.id) rememberRequest(kind, body.id);
         var sent = kind === 'bill' ? 'Bill requested ✓' : 'Waiter called ✓';
-        els.forEach(function(el){ setLabel(el, sent); });
+        els.forEach(function(el){ applyStatus(el, sent); });
         // The cooldown is UX, not the guard -- the dedupe index in service_requests.sql is what
         // actually protects the display. This just stops the buttons reading as unanswered.
-        setTimeout(function(){
-          els.forEach(function(el){ setLabel(el, LABELS[kind]); el.disabled = false; });
-        }, 90000);
+        setTimeout(function(){ resetKind(kind); }, 90000);
       }).catch(function(){
-        els.forEach(function(el){ setLabel(el, 'Could not send — tap to retry'); el.disabled = false; });
+        els.forEach(function(el){ applyStatus(el, 'Could not send — tap to retry'); el.disabled = false; });
       });
     }
+
+    // Manage dialog for a request this browser already has open -- Nudge (still waiting) or
+    // Cancel (sorted already / tapped by mistake), reachable from a repeat tap of either button.
+    var manage = document.getElementById('manage-request');
+    var manageH = document.getElementById('manage-h');
+    var manageBody = document.getElementById('manage-body');
+    var manageNudge = document.getElementById('manage-nudge');
+    var manageCancel = document.getElementById('manage-cancel');
+    var manageKind = null;
+
+    function agoLabel(ms){
+      var mins = Math.max(0, Math.round(ms / 60000));
+      if(mins < 1) return 'just now';
+      if(mins === 1) return '1 minute ago';
+      return mins + ' minutes ago';
+    }
+
+    function openManage(kind, active){
+      manageKind = kind;
+      manageH.textContent = kind === 'bill' ? 'Bill already requested' : 'Waiter already called';
+      manageBody.textContent = 'You asked ' + agoLabel(Date.now() - active.t) + '. Still waiting, or is this sorted?';
+      manageNudge.disabled = false;
+      manageNudge.textContent = 'Nudge them again';
+      manageCancel.disabled = false;
+      manageCancel.textContent = 'Cancel request';
+      manage.hidden = false;
+    }
+    document.getElementById('close-manage').onclick = function(){ manage.hidden = true; };
+
+    // Staff having already acknowledged it is the common case here, not an error -- both actions
+    // below treat that the same way: forget it and let the button work like a fresh tap again.
+    function handleStale(){
+      forgetRequest(manageKind);
+      manage.hidden = true;
+      resetKind(manageKind);
+    }
+
+    manageNudge.onclick = function(){
+      var active = rememberedRequest(manageKind);
+      if(!active) return handleStale();
+      manageNudge.disabled = true;
+      post('/service-request/' + encodeURIComponent(active.id) + '/nudge', {}).then(function(res){
+        if(res.status === 404) return handleStale();
+        if(!res.ok) throw new Error();
+        manageNudge.textContent = 'They’ve been told ✓';
+        setTimeout(function(){ manage.hidden = true; }, 1200);
+        // Same cooldown, same reasoning, as the initial send -- stops a mashed button from
+        // re-chiming the kitchen display every few seconds.
+        setTimeout(function(){
+          manageNudge.disabled = false;
+          manageNudge.textContent = 'Nudge them again';
+        }, 90000);
+      }).catch(function(){
+        manageNudge.disabled = false;
+        manageNudge.textContent = 'Could not send — tap to retry';
+      });
+    };
+
+    manageCancel.onclick = function(){
+      var active = rememberedRequest(manageKind);
+      if(!active) return handleStale();
+      manageCancel.disabled = true;
+      del('/service-request/' + encodeURIComponent(active.id)).then(function(res){
+        if(res.status === 404) return handleStale();
+        if(!res.ok) throw new Error();
+        forgetRequest(manageKind);
+        resetKind(manageKind);
+        manageCancel.textContent = 'Cancelled ✓';
+        setTimeout(function(){ manage.hidden = true; }, 900);
+      }).catch(function(){
+        manageCancel.disabled = false;
+      });
+    };
 
     serviceBtns.forEach(function(btn){
       btn.onclick = function(){
         // One overlay at a time, same rule as Hours & Address below: a tap from the sheet closes
-        // it first, whether that leads straight to sending or to the table prompt opening on top.
+        // it first, whether that leads to sending, the table prompt, or the manage dialog.
         sheet.hidden = true;
+        var kind = btn.dataset.kind;
         var table = rememberedTable();
         // The first tap of a visit can never send anything on its own -- it opens the prompt.
         // That doubles as the mis-tap guard: a stray thumb on a fixed footer costs a dialog, not
         // an actual waiter's walk across the room.
-        if(table) return send(btn.dataset.kind, table);
-        pendingKind = btn.dataset.kind;
-        tableAsk.hidden = false;
-        tableInput.value = '';
-        tableGo.disabled = true;
-        tableInput.focus();
+        if(!table){
+          pendingKind = kind;
+          tableAsk.hidden = false;
+          tableInput.value = '';
+          tableGo.disabled = true;
+          tableInput.focus();
+          return;
+        }
+        var active = rememberedRequest(kind);
+        if(active) return openManage(kind, active);
+        send(kind, table);
       };
     });
 

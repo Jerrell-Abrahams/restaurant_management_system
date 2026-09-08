@@ -270,13 +270,16 @@ const api = (token) => async (method, path, body) => {
   // edge, and a stylesheet built from repeated tokens compresses hard -- the raw string is
   // roughly 3-4x this. Asserting on the uncompressed length measured an axis no diner pays for.
   //
-  // 14KB, not 10KB: category chips, the burger sheet, the info modal and the open/closed
-  // badge (with lib/hours.js's status() inlined via toString()) are now fixed page chrome that
-  // ships regardless of menu size -- roughly 9.5-10KB gzipped on their own, before a single dish
-  // is added. This budget was raised here, deliberately, to fit that; it is not a hunt for a
-  // squeeze() bug, there wasn't one. Revisit downward only if some of that chrome turns out unused.
+  // 30KB, raised from 14KB when the bill splitter and its receipt scanner landed. Measured, not
+  // guessed: of a 28.4KB page, the inline script is ~19KB gzipped and the stylesheet ~5KB, so the
+  // script is now about 70% of what a phone downloads -- see the note above squeeze() for why it
+  // is not minified and why that is still the right call.
+  //
+  // This is a ratchet, not a target: the smoke menu is fixed, so the number below is stable
+  // run-to-run and ~5% above today's page. When it trips again, the fix is to stop shipping the
+  // splitter to the diners who never tap it, not to raise this a third time.
   const wire = zlib.gzipSync(page).length;
-  check('page under 14KB on the wire', wire < 14000, `${wire} gzipped, ${page.length} raw`);
+  check('page under 30KB on the wire', wire < 30000, `${wire} gzipped, ${page.length} raw`);
 
   const cookie = pageRes.headers.get('set-cookie');
   check('no visit row created by merely reading the menu', !cookie || !/rv=/.test(cookie));

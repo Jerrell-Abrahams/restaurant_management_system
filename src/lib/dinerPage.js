@@ -616,7 +616,14 @@ const STYLE_MIN = squeeze(STYLE);
 
 // The inline <script> below is deliberately NOT put through this. Minifying JS with a regex is
 // how you ship a page that breaks on one phone and nothing else -- ASI, a `//` inside a string,
-// a regex literal. It is the smaller half anyway (5.7KB against 13.3KB), and it gzips well.
+// a regex literal.
+//
+// It is no longer the smaller half, though, and that half of this note has stopped being true:
+// the bill splitter and its receipt scanner took the script to ~19KB gzipped against this
+// stylesheet's ~5KB, and it is now roughly 70% of what a phone downloads. The regex is still the
+// wrong answer. The right one, when the wire budget in scripts/smoke.js next trips, is to stop
+// shipping the splitter to the diners who never tap it -- serve it from its own route and fetch
+// it on first tap -- rather than to squeeze the source everyone reads.
 
 // The rating control, shared by the per-dish strip and the visit overlay. aria-label is spelled
 // "N out of 5" rather than naming the shape: COMPLIANCE.md 4 keeps every number in the copy well

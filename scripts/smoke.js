@@ -350,11 +350,11 @@ const api = (token) => async (method, path, body) => {
   check('resolved visit drops out of the unresolved filter', r.body.length === 1, `got ${r.body.length}`);
 
   r = await call('GET', `/api/admin/restaurants/${restaurantId}/dishes`);
-  // 4: Calamari, Ribs, the sold-out Burger, and Coke. The junk-price and nameless-size dishes
-  // above were both rejected, so neither exists.
-  check('dishes returns every menu item', r.body.dishes.length === 4, `got ${r.body.dishes.length}`);
+  // 5: Calamari, Ribs, the sold-out Burger, Coke, and the Loaded Burger. The junk-price,
+  // nameless-size and priceless-add-on dishes above were all rejected, so none of them exists.
+  check('dishes returns every menu item', r.body.dishes.length === 5, `got ${r.body.dishes.length}`);
   check('nothing is ranked on 1 rating each', r.body.boards.best.length === 0);
-  check('unranked dishes are counted, not hidden', r.body.boards.unrankedCount === 4, `got ${r.body.boards.unrankedCount}`);
+  check('unranked dishes are counted, not hidden', r.body.boards.unrankedCount === 5, `got ${r.body.boards.unrankedCount}`);
   const calamariRow = r.body.dishes.find((d) => d.name === 'Calamari');
   check('per-dish average present with its count', calamariRow.average === 5 && calamariRow.count === 1);
 

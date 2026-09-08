@@ -46,6 +46,7 @@ session cannot write itself an admin.
 |---|---|
 | `src/` | Express 5 API (CommonJS), deployed via the `api/index.js` rewrite |
 | `src/db/schema.sql` | Run once against the complex management project |
+| `src/db/*.sql` (the rest) | Additive column migrations, run after `schema.sql` — all re-runnable |
 | `docs/subscription-endpoint.js` | Paste-ready route for the *other* repo — see Setup step 5 |
 | `admin/` | Vite + React console for `res.complexai.co.za` (its own Vercel project) |
 | `scripts/smoke.js` | End-to-end test against the live project |
@@ -66,9 +67,22 @@ root API from its `admin/` SPA.
 3. In the **complex management** project: Settings → API → Exposed schemas, add `restaurant`.
    PostgREST serves only the schemas on that list, and the service-role key does not change
    that — without this every query 404s.
+
+   Then Authentication → URL Configuration:
+
+   - **Site URL** → `https://complexai.co.za/reset`. A project has exactly one, and it is the
+     fallback every auth email uses — so on a project shared by five products it should point at
+     something that belongs to none of them. That page (the `reset/` directory in the
+     `complex-ai_website` repo) sends the reset email *and* sets the new password: under PKCE the
+     code verifier stays on the origin that asked, so a reset started in this console could not be
+     finished on another domain. This console's "Forgot password?" is a plain link to it.
+   - **Redirect URLs** → add `https://res.complexai.co.za/**` and `http://localhost:5173/**`.
+     Still needed, but only for Google sign-in, which returns to whichever origin started it.
 4. Run `src/db/schema.sql` in that project's SQL editor, then run the bootstrap snippet at
    the bottom of it to make yourself an admin. Nothing is reachable until you do, including
-   for you. The file is re-runnable.
+   for you. The file is re-runnable. Then run the other `src/db/*.sql` files — each adds
+   columns to what `schema.sql` created and is re-runnable too; `npm run smoke` is what tells
+   you if one was missed.
 5. *(Optional, enables billing gating.)* Paste `docs/subscription-endpoint.js` into
    `src/routes/site.js` in `subscription_management_system`, set `PLATFORM_SECRET` there,
    and set `SUBSCRIPTION_API_URL` + `SUBSCRIPTION_API_SECRET` here. Leave them blank and the

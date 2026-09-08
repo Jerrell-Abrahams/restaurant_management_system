@@ -173,6 +173,62 @@ const api = (token) => async (method, path, body) => {
   });
   check('junk price is 400', r.status === 400, `got ${r.status}`);
 
+  // Sizes. This is also the check that catches db/menu_variants.sql not having been run against
+  // the project -- a missing price_variants column surfaces here as a failed insert, not as a
+  // silently size-less menu three screens later.
+  r = await call('POST', `/api/admin/restaurants/${restaurantId}/items`, {
+    categoryId: catStarters,
+    name: 'Coke',
+    variants: [{ label: '300ml', price: 'R25' }, { label: '500ml', price: '35,00' }, { label: '', price: '' }],
+  });
+  const itemCoke = r.body.id;
+  check(
+    'sizes round-trip to cents, blank row dropped',
+    r.status === 201 &&
+      JSON.stringify(r.body.price_variants) ===
+        JSON.stringify([{ label: '300ml', price_cents: 2500 }, { label: '500ml', price_cents: 3500 }]),
+    `got ${r.status} ${JSON.stringify(r.body.price_variants)}`
+  );
+
+  r = await call('POST', `/api/admin/restaurants/${restaurantId}/items`, {
+    categoryId: catStarters, name: 'Nameless size', variants: [{ label: '', price: 'R20' }],
+  });
+  check('a priced size with no name is 400', r.status === 400, `got ${r.status}`);
+
+  r = await call('PATCH', `/api/admin/restaurants/${restaurantId}/items/${itemCoke}`, { variants: [] });
+  check('sizes can be cleared back to none', Array.isArray(r.body.price_variants) && r.body.price_variants.length === 0);
+  await call('PATCH', `/api/admin/restaurants/${restaurantId}/items/${itemCoke}`, {
+    variants: [{ label: '300ml', price: 'R25' }, { label: '500ml', price: 'R35' }],
+  });
+
+  // Add-ons. Same job as the sizes block above: a missing add_ons column (db/menu_addons.sql not
+  // run) fails here rather than showing up as a dish that quietly forgot its extras.
+  r = await call('POST', `/api/admin/restaurants/${restaurantId}/items`, {
+    categoryId: catStarters,
+    name: 'Loaded Burger',
+    price: 'R125',
+    addOns: [{ label: 'Extra cheese', price: 'R12' }, { label: 'Salad instead', price: '0' }, { label: '', price: '' }],
+  });
+  const itemExtras = r.body.id;
+  check(
+    'add-ons round-trip to cents, free one kept, blank row dropped',
+    r.status === 201 &&
+      JSON.stringify(r.body.add_ons) ===
+        JSON.stringify([{ label: 'Extra cheese', price_cents: 1200 }, { label: 'Salad instead', price_cents: 0 }]),
+    `got ${r.status} ${JSON.stringify(r.body.add_ons)}`
+  );
+
+  r = await call('POST', `/api/admin/restaurants/${restaurantId}/items`, {
+    categoryId: catStarters, name: 'Priceless extra', addOns: [{ label: 'Extra bacon', price: '' }],
+  });
+  check('an add-on with no price is 400', r.status === 400, `got ${r.status}`);
+
+  r = await call('PATCH', `/api/admin/restaurants/${restaurantId}/items/${itemExtras}`, { addOns: [] });
+  check('add-ons can be cleared back to none', Array.isArray(r.body.add_ons) && r.body.add_ons.length === 0);
+  await call('PATCH', `/api/admin/restaurants/${restaurantId}/items/${itemExtras}`, {
+    addOns: [{ label: 'Extra cheese', price: 'R12' }, { label: 'Salad instead', price: '0' }],
+  });
+
   r = await call('GET', `/api/admin/restaurants/${restaurantId}/menu`);
   check('menu returns 2 categories', Array.isArray(r.body) && r.body.length === 2, `got ${r.body.length}`);
 
@@ -200,6 +256,9 @@ const api = (token) => async (method, path, body) => {
   check('menu page renders', pageRes.status === 200, `got ${pageRes.status}`);
   check('dishes present', page.includes('Calamari') && page.includes('Ribs 500g'));
   check('prices formatted', page.includes('R89.00') && page.includes('R189.50'));
+  check('sizes render on the dish, in the order they were entered', /300ml[\s\S]{0,120}R25\.00[\s\S]{0,200}500ml[\s\S]{0,120}R35\.00/.test(page));
+  check('add-ons render with a + on the price, and free where it is zero',
+    /Extra cheese[\s\S]{0,160}\+R12\.00/.test(page) && /Salad instead[\s\S]{0,160}free/.test(page));
   check('sold-out dish shown but not ratable', page.includes('Sold Out Burger') && !page.includes(`data-item="${itemBurger}"`));
   check('Google CTA present at render time', (page.match(/writereview/g) || []).length === 2);
   check('burger menu present', page.includes('id="open-sheet"'));
@@ -291,9 +350,11 @@ const api = (token) => async (method, path, body) => {
   check('resolved visit drops out of the unresolved filter', r.body.length === 1, `got ${r.body.length}`);
 
   r = await call('GET', `/api/admin/restaurants/${restaurantId}/dishes`);
-  check('dishes returns every menu item', r.body.dishes.length === 3, `got ${r.body.dishes.length}`);
+  // 4: Calamari, Ribs, the sold-out Burger, and Coke. The junk-price and nameless-size dishes
+  // above were both rejected, so neither exists.
+  check('dishes returns every menu item', r.body.dishes.length === 4, `got ${r.body.dishes.length}`);
   check('nothing is ranked on 1 rating each', r.body.boards.best.length === 0);
-  check('unranked dishes are counted, not hidden', r.body.boards.unrankedCount === 3, `got ${r.body.boards.unrankedCount}`);
+  check('unranked dishes are counted, not hidden', r.body.boards.unrankedCount === 4, `got ${r.body.boards.unrankedCount}`);
   const calamariRow = r.body.dishes.find((d) => d.name === 'Calamari');
   check('per-dish average present with its count', calamariRow.average === 5 && calamariRow.count === 1);
 

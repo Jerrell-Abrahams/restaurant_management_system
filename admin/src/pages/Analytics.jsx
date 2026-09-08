@@ -48,12 +48,12 @@ export function Analytics() {
         </Card>
       ) : (
         <div className="flex flex-col gap-3">
-          <div className="grid gap-3 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <Stat label="Scans, last 30 days" value={totalScans} />
             <Stat label="Ratings, last 30 days" value={totalRatings} />
           </div>
 
-          <div className="grid gap-3 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <Card className="p-0">
               <CardHeader><CardTitle>Scans & ratings</CardTitle></CardHeader>
               <div className="p-3">
@@ -104,7 +104,7 @@ export function Analytics() {
             </Card>
           </div>
 
-          <div className="grid gap-3 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <Card className="p-0">
               <CardHeader><CardTitle>Ratings by star</CardTitle></CardHeader>
               <div className="p-3">

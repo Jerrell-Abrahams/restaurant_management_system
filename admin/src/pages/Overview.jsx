@@ -118,7 +118,7 @@ export function Overview() {
             <Stat label="Off the menu" value={menu ? soldOut.length : null} />
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr] lg:items-start">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.5fr_1fr] lg:items-start">
             <div className="flex flex-col gap-3">
               <div className="flex items-baseline gap-2">
                 <h2 className="font-serif text-[17px] font-semibold">Deal with these first</h2>

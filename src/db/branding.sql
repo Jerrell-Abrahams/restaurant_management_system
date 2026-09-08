@@ -1,10 +1,12 @@
 -- Restaurant branding shown on the diner-facing menu (src/lib/dinerPage.js): an uploaded logo and
--- an accent color. Run in the same project as schema.sql, after it.
+-- a brand colour. Run in the same project as schema.sql, after it.
 --
--- accent_color stores a preset KEY (src/lib/brandPresets.js), never a raw hex -- the diner page's
--- palette is hand-tuned to hold AAA contrast in both light and dark themes (see the contrast
--- comments in dinerPage.js's STYLE block), a guarantee an arbitrary owner-picked hex can't make.
--- Null in either column means "unchanged": today's text-only header and brass/ivory palette.
+-- brand_hue is a HUE, 0-360, not a colour. The diner page derives four vars from it -- --accent,
+-- --lit, --lit-bg, --card-open-border -- at the exact saturation/lightness stops the default brass
+-- palette already sits on (see themeCss in dinerPage.js). Because only the hue varies and contrast
+-- is a function of lightness, every AAA ratio in that page's STYLE block holds for any hue an owner
+-- picks, which is what makes a free colour picker safe here where a free hex field would not be.
+-- Null means "no theme": the default brass/ivory palette, byte-identical to a pre-branding render.
 --
 -- logo_url is normally only ever written by POST /restaurants/:id/logo (src/lib/logo.js validates
 -- the bytes, the public "branding" Supabase Storage bucket holds them) but is a plain PATCH-able
@@ -13,7 +15,12 @@
 
 alter table restaurant.restaurants
   add column if not exists logo_url text,
-  add column if not exists accent_color text;
+  add column if not exists brand_hue smallint check (brand_hue between 0 and 360);
 
--- If the API answers "Could not find the column 'logo_url' in the schema cache":
+-- Superseded by brand_hue before anything ever wrote to it: it held a preset key from a fixed list
+-- of five accent colours, which the hue picker replaces outright. No data to migrate.
+alter table restaurant.restaurants
+  drop column if exists accent_color;
+
+-- If the API answers "Could not find the column 'brand_hue' in the schema cache":
 --   notify pgrst, 'reload schema';

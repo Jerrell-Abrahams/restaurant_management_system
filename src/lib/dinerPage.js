@@ -1,5 +1,6 @@
-const { formatCents } = require('./money');
+const { formatCents, parsePrice } = require('./money');
 const { DAYS, status, CLOSING_SOON_MINS } = require('./hours');
+const { parseReceipt, settle } = require('./splitBill');
 const { ALLERGEN_LABELS } = require('./dietary');
 const { PROMO_LABEL_TEXT } = require('./promotions');
 
@@ -220,6 +221,12 @@ h1{margin:0;font-family:var(--serif);font-size:24.5px;font-weight:500;line-heigh
 .leader{flex:1;border-bottom:1px dotted var(--dots);transform:translateY(-5px)}
 .price{font-size:15px;letter-spacing:.04em;color:var(--accent);white-space:nowrap;
   font-variant-numeric:tabular-nums}
+/* Sizes get a line of their own under the title, never a second price inside .line -- two prices
+   with the leader dots stretched between them has nowhere left to wrap on a 360px phone. */
+.sizes{margin-top:8px;display:flex;flex-wrap:wrap;gap:3px 16px;font-size:13px}
+.size{display:inline-flex;align-items:baseline}
+.size-label{color:var(--muted);letter-spacing:.02em}
+.size-price{margin-left:7px;color:var(--accent);white-space:nowrap;font-variant-numeric:tabular-nums}
 /* Promo/spice/diet's own row -- below the title, above the description, so a long name never has
    to fight a pill for the same 23px line. Each pill still carries its own margin-left (shared with
    the sold-out badge's spacing in .line), so :first-child resets it here rather than that being
@@ -255,6 +262,17 @@ h1{margin:0;font-family:var(--serif);font-size:24.5px;font-weight:500;line-heigh
   vertical-align:middle}
 .more-pills{margin:0 0 14px}
 .more-pills>:first-child{margin-left:0}
+/* Extras live in the opened panel, not on the price row like .sizes: a size IS the dish's price,
+   an add-on is a choice the diner only cares about once they are already reading the dish. Two
+   columns rather than .sizes' inline flow -- the prices line up down the right, which is what
+   makes six of them scannable instead of a wall of words. */
+.addons{margin:0 0 16px}
+.addons-head{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);
+  margin-bottom:7px}
+.addon{display:flex;align-items:baseline;gap:10px;font-size:13px;line-height:1.9}
+.addon-label{color:var(--muted);letter-spacing:.02em}
+.addon-dots{flex:1;border-bottom:1px dotted var(--dots);transform:translateY(-4px)}
+.addon-price{color:var(--accent);white-space:nowrap;font-variant-numeric:tabular-nums}
 /* Only ever rendered when the admin ticked at least one box -- see renderItem. Sits above the
    rating prompt so a diner reads it before deciding whether to rate, not after. */
 .allergens{margin:0 0 16px;font-size:12px;line-height:1.5;color:var(--dim)}
@@ -376,6 +394,102 @@ textarea.field{resize:vertical;min-height:96px;font-family:inherit}
   text-decoration:underline;text-underline-offset:3px}
 .closed-note{margin-top:14px;padding:12px 14px;border-radius:7px;background:var(--panel);
   font-size:12.5px;line-height:1.5;color:var(--muted)}
+
+/* --- Split the bill ------------------------------------------------------------------------
+   One overlay, four panes, reusing .overlay/.field/.btn/.copied wholesale. The only genuinely
+   new shapes are the editable item row and the person chip; everything else is an existing
+   token. Unlike the other overlays this one can run taller than the screen (a fifteen-line bill
+   with four people), so it anchors to the top and scrolls rather than centring. */
+#split{justify-content:flex-start}
+#split h2{font-size:27px}
+#split>div{padding-bottom:8px}
+.sp-note{margin:14px 0 0;font-size:12px;line-height:1.5;color:var(--dim)}
+.sp-label{display:block;margin:22px 0 0;font-size:9.5px;letter-spacing:.3em;
+  text-transform:uppercase;color:var(--dim)}
+.sp-warn{margin:14px 0 0;padding:11px 13px;border-radius:8px;background:var(--lit-bg);
+  color:var(--lit);font-size:12.5px;line-height:1.5}
+.sp-warn button{display:block;margin-top:7px;border:0;background:none;padding:0;font:inherit;font-size:12.5px;
+  color:inherit;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+
+/* Item rows. Name and price are inputs from the first render rather than text that turns into an
+   input on tap: every one of these is an OCR guess, and making the correction gesture "tap the
+   thing and type" costs a row of chrome that a two-tap edit affordance would cost anyway. */
+.sp-list{margin-top:6px;border:1px solid var(--border);border-radius:12px;background:var(--card);
+  overflow:hidden}
+.sp-row{display:flex;align-items:center;gap:8px;padding:9px 10px 9px 13px;
+  border-bottom:1px solid var(--hair)}
+.sp-row:last-child{border-bottom:0}
+.sp-row input{min-width:0;border:0;background:none;color:var(--text);font:inherit;font-size:14px;
+  padding:5px 0;outline:none}
+.sp-row input:focus{border-bottom:1px solid var(--accent)}
+.sp-row .sp-name{flex:1}
+.sp-row .sp-price{width:82px;text-align:right;font-variant-numeric:tabular-nums}
+.sp-del{flex:none;width:28px;height:28px;border:0;border-radius:7px;background:none;
+  color:var(--dim);font:inherit;font-size:15px;line-height:1;cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
+.sp-del:active{background:var(--panel)}
+.sp-add{width:100%;margin-top:10px;padding:12px;border:1px dashed var(--border-strong);
+  border-radius:10px;background:none;color:var(--dim);font:inherit;font-size:12.5px;cursor:pointer}
+.sp-empty{padding:20px 13px;color:var(--dim);font-size:13px}
+
+/* Party size. A stepper, not a number input -- one thumb, no keyboard, and it cannot be handed
+   a party of 0 or 900 in the first place. */
+.sp-stepper{display:flex;align-items:center;gap:12px;margin-top:20px}
+.sp-stepper .sp-label{flex:1;margin:0}
+.sp-step-btn{width:38px;height:38px;border-radius:50%;border:1px solid var(--border-strong);
+  background:var(--raised);color:var(--text);font:inherit;font-size:18px;line-height:1;
+  cursor:pointer;-webkit-tap-highlight-color:transparent}
+.sp-step-btn[disabled]{opacity:.35;cursor:default}
+.sp-count{min-width:24px;text-align:center;font-size:19px;color:var(--heading);
+  font-variant-numeric:tabular-nums}
+.sp-names{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.sp-names input{width:calc(50% - 4px);padding:10px 12px;border-radius:8px;
+  border:1px solid var(--border);background:var(--raised);color:var(--text);font:inherit;
+  font-size:13.5px;outline:none}
+
+/* Who had what, and the tip percentages, are the same control: a row of toggles where the lit
+   state is the existing --lit/--lit-bg pair the hours badge and active chip already use. */
+.sp-assign{margin-top:18px}
+.sp-item{padding:13px 0;border-bottom:1px solid var(--hair)}
+.sp-item:last-child{border-bottom:0}
+.sp-item-head{display:flex;justify-content:space-between;gap:12px;font-size:13.5px;
+  color:var(--text)}
+.sp-item-head .sp-amt{color:var(--muted);font-variant-numeric:tabular-nums}
+.sp-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.sp-chip{padding:7px 13px;border-radius:999px;border:1px solid var(--border);
+  background:var(--raised);color:var(--muted);font:inherit;font-size:12px;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+  transition:background .16s var(--ease),color .16s var(--ease),border-color .16s var(--ease)}
+.sp-chip[aria-pressed="true"]{background:var(--lit-bg);color:var(--lit);border-color:var(--lit)}
+
+.sp-tabs{display:flex;gap:6px;margin-top:8px}
+.sp-tab{flex:1;padding:11px;border-radius:9px;border:1px solid var(--border);
+  background:var(--raised);color:var(--muted);font:inherit;font-size:12px;letter-spacing:.1em;
+  text-transform:uppercase;cursor:pointer}
+.sp-tab[aria-pressed="true"]{background:var(--lit-bg);color:var(--lit);border-color:var(--lit)}
+.sp-pcts{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+
+/* The answer. Bigger type than anything else in the overlay -- this is the one line each person
+   at the table actually reads, usually upside down over someone's shoulder. */
+.sp-lines{margin-top:22px;border-top:1px solid var(--hair)}
+.sp-line{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:13px 0;
+  border-bottom:1px solid var(--hair)}
+.sp-line .sp-who{font-size:15px;color:var(--heading)}
+.sp-line .sp-sub{display:block;margin-top:3px;font-size:11px;color:var(--dim)}
+.sp-line .sp-owes{font-size:19px;color:var(--heading);font-variant-numeric:tabular-nums;
+  white-space:nowrap}
+.sp-grand{display:flex;justify-content:space-between;padding:14px 0 0;font-size:12px;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.sp-grand span{font-variant-numeric:tabular-nums}
+
+.sp-nav{display:flex;gap:8px;margin-top:22px}
+.sp-nav-btn{flex:1;height:52px;border-radius:999px;border:1px solid var(--border);background:none;
+  color:var(--dim);font:inherit;font-size:12px;letter-spacing:.22em;text-transform:uppercase;
+  cursor:pointer}
+.sp-nav-next{border-color:var(--cta-border);background:var(--cta-bg);color:var(--cta-ink)}
+.sp-nav-btn[disabled]{opacity:.4;cursor:not-allowed}
+button.btn-quiet{width:100%;border:0;background:none;font:inherit;font-size:11px;
+  letter-spacing:.2em;text-transform:uppercase;cursor:pointer}
 
 /* --- Motion ------------------------------------------------------------------------------
    All of it is CSS. An animation library would be a blocking script in front of a menu someone
@@ -550,15 +664,36 @@ const ICON_SHARE =
   '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4m0 0L8.5 7.5M12 4l3.5 3.5"/><path d="M5 13v6a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-6"/></svg>';
 const ICON_BULB =
   '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 21h4"/><path d="M7 9a5 5 0 1 1 8.5 3.5c-.9.9-1.5 1.7-1.5 3.5h-6c0-1.8-.6-2.6-1.5-3.5A5 5 0 0 1 7 9Z"/></svg>';
+// Split the bill. Two people rather than a receipt-with-a-dashed-line, because the row sits
+// directly under Request bill and its ICON_RECEIPT -- two near-identical receipts stacked would
+// read as one control repeated, which is the opposite of what the row is for.
+const ICON_SPLIT =
+  '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.4"/><path d="M2.8 19.6c0-3.3 2.8-5.4 6.2-5.4s6.2 2.1 6.2 5.4"/><path d="M16.2 5.1a3.4 3.4 0 0 1 0 5.8"/><path d="M17.6 14.5c2.4.6 3.6 2.4 3.6 5.1"/></svg>';
 
 // `i` arrives free from Array#map. It only feeds the entrance stagger, capped because past the
 // eighth dish nobody is watching the load animation any more.
 function renderItem(item, i) {
   const stagger = `--i:${Math.min(i || 0, 8)}`;
   const price = formatCents(item.price_cents);
-  // Name and description both feed the search box -- someone hunting "peri" should find the dish
-  // whose description mentions it, not only the ones with it in the title.
-  const haystack = esc(`${item.name} ${item.description || ''}`.toLowerCase());
+  // Name, description, size labels and add-on labels all feed the search box. Someone hunting
+  // "500ml" should find the drinks that come in one, and someone hunting "bacon" should find the
+  // burger you can put bacon on, not only the dishes with it in the title.
+  const extraLabels = [...(item.price_variants || []), ...(item.add_ons || [])].map((v) => v.label).join(' ');
+  // Appended only when there are some, so a dish without them keeps the exact haystack string it
+  // has always had rather than gaining a trailing space nothing needs.
+  const haystack = esc(`${item.name} ${item.description || ''}${extraLabels ? ` ${extraLabels}` : ''}`.toLowerCase());
+
+  // Sizes render whenever they exist and price_cents renders whenever it is set -- the two never
+  // consult each other. A dish carrying both is a menu-writing mistake, and the admin Price field
+  // says so; quietly dropping one here would hide what the owner typed instead of showing it back.
+  const sizes = (item.price_variants || [])
+    .map((v) => {
+      const p = formatCents(v.price_cents);
+      return p
+        ? `<span class="size"><span class="size-label">${esc(v.label)}</span><span class="size-price">${esc(p)}</span></span>`
+        : '';
+    })
+    .join('');
 
   const dietLabel = item.diet === 'vegan' ? 'Vegan' : item.diet === 'vegetarian' ? 'Vegetarian' : '';
   const promoLabel = PROMO_LABEL_TEXT[item.promo_label] || '';
@@ -593,6 +728,7 @@ function renderItem(item, i) {
       <span class="leader"></span>
       ${price ? `<span class="price">${esc(price)}</span>` : ''}
     </span>
+    ${sizes ? `<span class="sizes">${sizes}</span>` : ''}
     ${shownBadges ? `<span class="badges">${shownBadges}</span>` : ''}
     ${
       item.description || item.available
@@ -605,6 +741,17 @@ function renderItem(item, i) {
 
   // "Contains: ..." only when the admin has ticked something -- an empty list means "not
   // specified", never "verified allergen-free", so it renders nothing rather than a false all-clear.
+  // "free" rather than "+R0.00" -- a no-charge swap reads as a perk, and a column of R0.00s reads
+  // as a pricing bug. Zero is the only price that gets the word; a blank one never reaches here
+  // (see variants.js), so this cannot dress up a price someone forgot to type.
+  const addOns = (item.add_ons || [])
+    .map((a) => {
+      const p = a.price_cents ? `+${formatCents(a.price_cents)}` : 'free';
+      return `<div class="addon"><span class="addon-label">${esc(a.label)}</span><span class="addon-dots"></span><span class="addon-price">${esc(p)}</span></div>`;
+    })
+    .join('');
+  const addOnBlock = addOns ? `<div class="addons"><div class="addons-head">Add-ons</div>${addOns}</div>` : '';
+
   const allergenLine = item.allergens && item.allergens.length
     ? `<p class="allergens">Contains: ${item.allergens.map((a) => esc(ALLERGEN_LABELS[a] || a)).join(', ')}</p>`
     : '';
@@ -625,6 +772,7 @@ function renderItem(item, i) {
   <div class="panel">
     <div class="rule"></div>
     ${hiddenPills.length ? `<div class="more-pills">${hiddenPills.join('')}</div>` : ''}
+    ${addOnBlock}
     ${allergenLine}
     <div class="rate">
       <div class="rate-head">
@@ -665,7 +813,40 @@ function renderHoursTable(hours) {
   ).join('');
 }
 
-function renderPage({ restaurant, menu }) {
+// The brand hue moves four vars and only four: --accent (price, word-marks, spice, map link),
+// --lit (open badge, active chip, dietary/promo pills), its --lit-bg fill, and
+// --card-open-border. Everything else -- the ink-tinted hairlines especially -- stays neutral,
+// because brand-coloured structure is what makes a themed page read as a template.
+//
+// Only the HUE moves. Every saturation/lightness stop below is the one the default brass palette
+// already sits on (it is hsl(38, ...) throughout), so the AAA ratios the STYLE block's comments
+// were measured against hold for any hue an owner can pick -- contrast is a function of lightness,
+// and no lightness here is a variable. That is the whole reason this can be a free colour picker
+// rather than a fixed preset list.
+//
+// Null hue appends nothing at all: an unthemed restaurant renders the exact bytes it rendered
+// before this existed.
+function themeCss(hue) {
+  // Numbers only, deliberately: Number(null) and Number('') are both 0, so a looser check would
+  // turn "no theme" into a bright red one.
+  if (typeof hue !== 'number' || !Number.isFinite(hue)) return '';
+  const h = Math.round(hue);
+  if (h < 0 || h > 360) return '';
+  const light = `--accent:hsl(${h},57%,35%);--lit:hsl(${h},52%,47%);--lit-bg:hsla(${h},52%,47%,.1);--card-open-border:hsla(${h},52%,39%,.35)`;
+  const dark = `--accent:hsl(${h},50%,57%);--lit:hsl(${h},60%,66%);--lit-bg:hsla(${h},50%,57%,.1);--card-open-border:hsla(${h},50%,57%,.32)`;
+  // Declared twice for the same reason the STYLE block declares its dark vars twice: the media
+  // query follows the system, the [data-theme] rule has to beat it when the diner toggled.
+  return `<style>:root{${light}}`
+    + `@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){${dark}}}`
+    + `:root[data-theme="dark"]{${dark}}</style>`;
+}
+
+// `preview` renders the same page for the owner's Settings preview frame (routes/public.js,
+// ?preview=1) with every write stripped out at TEMPLATE level, not guarded at runtime: the scan
+// beacon never ships, and post()/del() return a canned ok instead of a fetch. An owner will tap
+// "Call waiter" to see what it does, and a phantom "table 4 wants the bill" on the kitchen display
+// is a worse bug than the analytics noise the beacon alone would cause.
+function renderPage({ restaurant, menu, preview }) {
   // An empty category is not a filter anyone wants offered, and it renders as a heading with a
   // gap under it. Filtered once here so the chips and the sections cannot disagree about indices.
   const cats = menu.filter((c) => c.items.length);
@@ -736,6 +917,7 @@ function renderPage({ restaurant, menu }) {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500&family=Jost:wght@300;400&display=swap">
 <style>${STYLE_MIN}</style>
+${themeCss(restaurant.brand_hue)}
 <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
 </head>
 <body data-slug="${esc(restaurant.slug)}"
@@ -847,12 +1029,17 @@ ${
   <button class="close" type="button" id="close-sheet" aria-label="Close">✕</button>
   <div>
     <p class="sub" id="sheet-h">More</p>
-    ${
-      serviceEnabled
-        ? `<section class="sheet-group" aria-labelledby="sheet-g-table">
+    <section class="sheet-group" aria-labelledby="sheet-g-table">
       <h3 class="sheet-group-label" id="sheet-g-table">At your table</h3>
       <div class="sheet-card">
-        <button class="sheet-row" type="button" data-kind="waiter">
+        ${
+          // This group renders for EVERY restaurant -- only the two service rows inside it are
+          // gated. The splitter is a calculator on the diner's own phone, not something a waiter
+          // has to action, so it has nothing to do with serviceEnabled. Put the gate back on the
+          // <section> and the splitter silently disappears from every restaurant that has not
+          // switched table service on.
+          serviceEnabled
+            ? `<button class="sheet-row" type="button" data-kind="waiter">
           <span class="sheet-row-icon sheet-row-icon--accent">${ICON_BELL}</span>
           <span class="sheet-row-text"><span class="sheet-row-title label">Call waiter</span><span class="sheet-row-subtitle">Someone comes to your table</span></span>
           <span class="chev">›</span>
@@ -863,10 +1050,16 @@ ${
           <span class="sheet-row-text"><span class="sheet-row-title label">Request bill</span><span class="sheet-row-subtitle">Card, cash or split</span></span>
           <span class="chev">›</span>
         </button>
+        <div class="sheet-divider"></div>`
+            : ''
+        }
+        <button class="sheet-row" type="button" id="open-split">
+          <span class="sheet-row-icon">${ICON_SPLIT}</span>
+          <span class="sheet-row-text"><span class="sheet-row-title">Split the bill</span><span class="sheet-row-subtitle">Work out who owes what</span></span>
+          <span class="chev">›</span>
+        </button>
       </div>
-    </section>`
-        : ''
-    }
+    </section>
     <section class="sheet-group" aria-labelledby="sheet-g-restaurant">
       <h3 class="sheet-group-label" id="sheet-g-restaurant">The restaurant</h3>
       <div class="sheet-card">
@@ -910,6 +1103,75 @@ ${
 </div>
 
 ${
+  // Split the bill. Four panes in one overlay rather than four overlays: the back gesture handler
+  // above treats any open .overlay as one dismissable state, and a four-deep stack of them would
+  // turn one back swipe into "close the whole thing" halfway through a split.
+  //
+  // Nothing here talks to the server. The photo is read by Tesseract.js in the browser and never
+  // leaves the phone, the maths is lib/splitBill.js injected below, and the working split lives in
+  // localStorage. No route, no table, no image upload, nothing to retain.
+  ''
+}<div class="overlay" id="split" hidden role="dialog" aria-modal="true" aria-labelledby="split-h">
+  <button class="close" type="button" id="close-split" aria-label="Close">✕</button>
+  <div>
+    <h2 id="split-h">Split the bill</h2>
+    <p id="split-sub">Photograph the bill or type it in. It stays on your phone.</p>
+
+    <div class="sp-pane" id="sp-start">
+      <!-- A plain file input styled as the primary button: the native picker is the camera on
+           every phone this page runs on, with no library and no permission prompt of our own. -->
+      <label class="btn" for="sp-photo">Photograph the bill</label>
+      <input id="sp-photo" type="file" accept="image/*" capture="environment" hidden>
+      <button class="btn btn-ghost" type="button" id="sp-manual">Type it in instead</button>
+      <p class="sp-note" id="sp-scan-note" hidden></p>
+    </div>
+
+    <div class="sp-pane" id="sp-items" hidden>
+      <div class="sp-list" id="sp-item-list"></div>
+      <button class="sp-add" type="button" id="sp-add">+ Add an item</button>
+      <label class="sp-label" for="sp-total">What the bill says</label>
+      <input class="field" id="sp-total" type="text" inputmode="decimal" placeholder="761.75"
+             autocomplete="off" aria-label="Bill total">
+      <p class="sp-warn" id="sp-unaccounted" hidden></p>
+    </div>
+
+    <div class="sp-pane" id="sp-who" hidden>
+      <div class="sp-stepper">
+        <span class="sp-label" id="sp-count-label">Splitting between</span>
+        <button class="sp-step-btn" type="button" id="sp-fewer" aria-label="One fewer person">−</button>
+        <span class="sp-count" id="sp-count" aria-live="polite">2</span>
+        <button class="sp-step-btn" type="button" id="sp-more" aria-label="One more person">+</button>
+      </div>
+      <div class="sp-names" id="sp-names"></div>
+      <label class="sp-label">Who had what</label>
+      <div class="sp-assign" id="sp-assign"></div>
+      <p class="sp-warn" id="sp-unassigned" hidden></p>
+    </div>
+
+    <div class="sp-pane" id="sp-result" hidden>
+      <label class="sp-label">Tip</label>
+      <div class="sp-tabs">
+        <button class="sp-tab" type="button" data-tip="percent" aria-pressed="true">Percent</button>
+        <button class="sp-tab" type="button" data-tip="amount" aria-pressed="false">Amount</button>
+      </div>
+      <div class="sp-pcts" id="sp-pcts"></div>
+      <input class="field" id="sp-tip-amount" type="text" inputmode="decimal" placeholder="100.00"
+             autocomplete="off" aria-label="Tip amount in rand" hidden>
+      <div class="sp-lines" id="sp-lines"></div>
+      <div class="sp-grand"><span>Total incl. tip</span><span id="sp-grand"></span></div>
+      <button class="btn" type="button" id="sp-copy">Copy summary</button>
+      <p class="copied" id="sp-copied" hidden>Copied</p>
+      <button class="btn-quiet" type="button" id="sp-reset">Start over</button>
+    </div>
+
+    <div class="sp-nav">
+      <button class="sp-nav-btn" type="button" id="sp-back" hidden>Back</button>
+      <button class="sp-nav-btn sp-nav-next" type="button" id="sp-next" hidden>Next</button>
+    </div>
+  </div>
+</div>
+
+${
   hasInfo
     ? `<div class="overlay" id="info" hidden role="dialog" aria-modal="true" aria-labelledby="info-h">
   <button class="close" type="button" id="close-info" aria-label="Close">✕</button>
@@ -935,7 +1197,17 @@ ${
   var WORDS = ${JSON.stringify(WORDS)};
   var sending = false;
 
-  function post(path, body){
+${
+  preview
+    ? `  // Preview frame: shaped like a real fetch Response because every caller reads .ok, .status
+  // or .json() off it, so the page still walks through its real success states -- the owner sees
+  // "Waiter called ✓" -- while nothing leaves the browser.
+  function previewOk(){
+    return Promise.resolve({ ok:true, status:200, json:function(){ return Promise.resolve({ ok:true, id:'preview' }); } });
+  }
+  function post(){ return previewOk(); }
+  function del(){ return previewOk(); }`
+    : `  function post(path, body){
     return fetch('/api/public/' + encodeURIComponent(slug) + path, {
       method:'POST', headers:{'Content-Type':'application/json'},
       credentials:'same-origin', body:JSON.stringify(body)
@@ -953,7 +1225,8 @@ ${
   // undercount almost every real scan. sendBeacon survives the diner tapping away immediately
   // after landing; post() is the fallback for the one browser without it.
   if(navigator.sendBeacon) navigator.sendBeacon('/api/public/' + encodeURIComponent(slug) + '/scan');
-  else post('/scan', {});
+  else post('/scan', {});`
+}
 
   // Restarts a one-shot keyframe class. Removing and re-adding is not enough on its own -- the
   // layout read wedged in between is what actually resets the animation.
@@ -1548,6 +1821,550 @@ ${
       thanks.hidden = false;
     });
   };
+
+  // --- Split the bill -------------------------------------------------------------------------
+  // Runs entirely on the phone: no fetch, no route, no table. parseReceipt/settle are
+  // lib/splitBill.js's own functions and parsePrice/formatCents are lib/money.js's, all four
+  // inlined by toString() so there is exactly one implementation of the receipt parsing, the cent
+  // arithmetic and the "R189.00" formatting across the server and a diner's phone. Those files'
+  // headers say why each has to stay pure; splitBill.test.js and dinerPage.test.js enforce it.
+  (function(){
+    ${parseReceipt.toString()}
+
+    ${settle.toString()}
+
+    ${parsePrice.toString()}
+
+    ${formatCents.toString()}
+
+    var KEY = 'split:' + slug;
+    // Pinned exactly. The 63KB here is the small half -- Tesseract pulls its wasm core and the
+    // English language data from its own CDN on first recognise, which is the number that matters
+    // and the reason none of this loads until someone taps Photograph the bill.
+    var TESSERACT = 'https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/6.0.1/tesseract.min.js';
+    var PANES = ['sp-start', 'sp-items', 'sp-who', 'sp-result'];
+    // One line of standing instruction per pane. The heading stays put so the overlay does not
+    // appear to navigate away from itself; only the sentence under it changes.
+    var SUBS = [
+      'Photograph the bill or type it in. It stays on your phone.',
+      'Check the lines. Fix anything that came out wrong.',
+      'Tap everyone who shared a line — a bottle can belong to two people.',
+      'Add a tip, and this is who owes what.'
+    ];
+    // ponytail: no custom-percent field. The Amount tab already covers "some other number", and a
+    // second free-text money input to maintain for the gap between 12.5% and 15% is not worth it.
+    var PCTS = [0, 5, 10, 12.5, 15];
+    var MAX_PEOPLE = 12;
+
+    var splitEl = document.getElementById('split');
+    var listEl = document.getElementById('sp-item-list');
+    var totalEl = document.getElementById('sp-total');
+    var unaccEl = document.getElementById('sp-unaccounted');
+    var namesEl = document.getElementById('sp-names');
+    var assignEl = document.getElementById('sp-assign');
+    var countEl = document.getElementById('sp-count');
+    var unassEl = document.getElementById('sp-unassigned');
+    var fewerBtn = document.getElementById('sp-fewer');
+    var moreBtn = document.getElementById('sp-more');
+    var pctsEl = document.getElementById('sp-pcts');
+    var tipAmtEl = document.getElementById('sp-tip-amount');
+    var linesEl = document.getElementById('sp-lines');
+    var grandEl = document.getElementById('sp-grand');
+    var backBtn = document.getElementById('sp-back');
+    var nextBtn = document.getElementById('sp-next');
+
+    function fresh(){
+      return { items: [], people: ['Person 1', 'Person 2'],
+               tip: { mode: 'percent', value: 10 }, billTotalCents: null, step: 0 };
+    }
+
+    // ponytail: the whole split, one key, rewritten on every change. A bill is a few hundred bytes
+    // and lives about ten minutes -- anything incremental would be a sync engine for a thing that
+    // does not outlive the meal.
+    function save(){
+      S.at = Date.now();
+      try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){}
+    }
+
+    function load(){
+      try {
+        var raw = JSON.parse(localStorage.getItem(KEY));
+        // Shape-checked rather than trusted: this string survives deploys, so a split written by
+        // an older version has to fail here rather than throw somewhere deep inside a render.
+        // Twelve hours is one meal -- past that, restoring last week's bill is a bug, not a
+        // convenience.
+        if(raw && Array.isArray(raw.items) && Array.isArray(raw.people) && raw.people.length >= 2 &&
+           raw.tip && Date.now() - (raw.at || 0) < 12 * 3600 * 1000) return raw;
+      } catch(e){}
+      return fresh();
+    }
+
+    var S = load();
+
+    function calc(){
+      return settle({ items: S.items, peopleCount: S.people.length,
+                      tip: S.tip, billTotalCents: S.billTotalCents });
+    }
+
+    function label(i){ return S.people[i] || ('Person ' + (i + 1)); }
+    function rands(cents){ return (cents / 100).toFixed(2); }
+
+    // --- Pane 2: the items ---------------------------------------------------------------------
+    // Rebuilt only on add, delete and scan. Typing into a name or price mutates the model in place
+    // instead of re-rendering, because a re-render mid-keystroke takes the caret with it.
+    function renderItems(){
+      listEl.innerHTML = '';
+      if(!S.items.length){
+        var empty = document.createElement('p');
+        empty.className = 'sp-empty';
+        empty.textContent = 'Nothing here yet — add the first line below.';
+        listEl.appendChild(empty);
+        return;
+      }
+      S.items.forEach(function(item, i){
+        var row = document.createElement('div');
+        row.className = 'sp-row';
+
+        var name = document.createElement('input');
+        name.className = 'sp-name';
+        name.type = 'text';
+        name.value = item.name;
+        name.placeholder = 'Item';
+        name.setAttribute('aria-label', 'Item name');
+        name.addEventListener('input', function(){ item.name = name.value; save(); });
+
+        var price = document.createElement('input');
+        price.className = 'sp-price';
+        price.type = 'text';
+        price.inputMode = 'decimal';
+        price.value = rands(item.cents);
+        price.setAttribute('aria-label', 'Item price');
+        price.addEventListener('input', function(){
+          // parsePrice is the console's own, so "R98", "98,50" and "98.50" all mean the same thing
+          // here as they do on the menu. NaN is a half-typed number -- keep the last good value
+          // rather than zeroing the line under the diner's finger.
+          var cents = parsePrice(price.value);
+          if(cents !== null && !isNaN(cents)){ item.cents = cents; save(); syncItems(); }
+        });
+        price.addEventListener('blur', function(){ price.value = rands(item.cents); });
+
+        var del = document.createElement('button');
+        del.className = 'sp-del';
+        del.type = 'button';
+        del.textContent = '✕';
+        del.setAttribute('aria-label', 'Remove this line');
+        del.onclick = function(){ S.items.splice(i, 1); save(); renderItems(); syncItems(); };
+
+        row.appendChild(name);
+        row.appendChild(price);
+        row.appendChild(del);
+        listEl.appendChild(row);
+      });
+    }
+
+    function syncItems(){
+      var r = calc();
+      unaccEl.innerHTML = '';
+      if(r.unaccounted === null || r.unaccounted === 0){
+        unaccEl.hidden = true;
+      } else {
+        var over = r.unaccounted < 0;
+        var text = document.createElement('span');
+        text.textContent = over
+          ? ('The lines add up to ' + formatCents(-r.unaccounted) + ' more than the bill total.')
+          : (formatCents(r.unaccounted) + ' of the bill is not on this list — a missed line, or the VAT and service charge.');
+        unaccEl.appendChild(text);
+        if(!over){
+          // The fix path for OCR's inevitable misses: one tap turns the gap into a real line that
+          // people can then share, instead of a warning the diner can only stare at.
+          var fix = document.createElement('button');
+          fix.type = 'button';
+          fix.textContent = 'Add it as one shared line';
+          fix.onclick = function(){
+            S.items.push({ name: 'The rest of the bill', cents: r.unaccounted, who: [] });
+            save();
+            renderItems();
+            syncItems();
+          };
+          unaccEl.appendChild(fix);
+        }
+        unaccEl.hidden = false;
+      }
+      syncNav();
+    }
+
+    // --- Pane 3: who had what ------------------------------------------------------------------
+    function renderNames(){
+      countEl.textContent = S.people.length;
+      fewerBtn.disabled = S.people.length <= 2;
+      moreBtn.disabled = S.people.length >= MAX_PEOPLE;
+      namesEl.innerHTML = '';
+      S.people.forEach(function(who, i){
+        var input = document.createElement('input');
+        input.type = 'text';
+        input.value = who;
+        input.maxLength = 18;
+        input.setAttribute('aria-label', 'Name of person ' + (i + 1));
+        input.addEventListener('input', function(){
+          S.people[i] = input.value;
+          // Retype only this person's chips. A full re-render of the assign list would scroll it
+          // back to the top and lose the row someone was halfway through tapping.
+          var chips = assignEl.querySelectorAll('[data-p="' + i + '"]');
+          for(var k = 0; k < chips.length; k++) chips[k].textContent = label(i);
+          save();
+        });
+        namesEl.appendChild(input);
+      });
+    }
+
+    function renderAssign(){
+      assignEl.innerHTML = '';
+      S.items.forEach(function(item){
+        if(!item.who) item.who = [];
+        var wrap = document.createElement('div');
+        wrap.className = 'sp-item';
+
+        var head = document.createElement('div');
+        head.className = 'sp-item-head';
+        var name = document.createElement('span');
+        name.textContent = item.name || 'Untitled item';
+        var amt = document.createElement('span');
+        amt.className = 'sp-amt';
+        amt.textContent = formatCents(item.cents);
+        head.appendChild(name);
+        head.appendChild(amt);
+
+        var chips = document.createElement('div');
+        chips.className = 'sp-chips';
+        S.people.forEach(function(who, i){
+          var chip = document.createElement('button');
+          chip.type = 'button';
+          chip.className = 'sp-chip';
+          chip.dataset.p = i;
+          chip.textContent = label(i);
+          chip.setAttribute('aria-pressed', item.who.indexOf(i) > -1 ? 'true' : 'false');
+          chip.onclick = function(){
+            // Several people lit on one line is how a shared bottle works: the cost divides across
+            // everyone tapped, not across the table and not onto whoever tapped it first.
+            var at = item.who.indexOf(i);
+            if(at > -1) item.who.splice(at, 1); else item.who.push(i);
+            chip.setAttribute('aria-pressed', at > -1 ? 'false' : 'true');
+            save();
+            syncWho();
+          };
+          chips.appendChild(chip);
+        });
+
+        wrap.appendChild(head);
+        wrap.appendChild(chips);
+        assignEl.appendChild(wrap);
+      });
+    }
+
+    function syncWho(){
+      var r = calc();
+      if(r.unassigned > 0){
+        unassEl.textContent = formatCents(r.unassigned) + ' still has nobody against it.';
+        unassEl.hidden = false;
+      } else {
+        unassEl.hidden = true;
+      }
+      syncNav();
+    }
+
+    // --- Pane 4: the tip, and the answer -------------------------------------------------------
+    function renderTipControls(){
+      var pct = S.tip.mode !== 'amount';
+      pctsEl.innerHTML = '';
+      PCTS.forEach(function(p){
+        var chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'sp-chip';
+        chip.textContent = p + '%';
+        chip.setAttribute('aria-pressed', pct && S.tip.value === p ? 'true' : 'false');
+        chip.onclick = function(){ S.tip = { mode: 'percent', value: p }; save(); renderResult(); };
+        pctsEl.appendChild(chip);
+      });
+      pctsEl.hidden = !pct;
+      tipAmtEl.hidden = pct;
+      var tabs = document.querySelectorAll('.sp-tab');
+      for(var i = 0; i < tabs.length; i++){
+        tabs[i].setAttribute('aria-pressed', (tabs[i].dataset.tip === 'amount') === !pct ? 'true' : 'false');
+      }
+    }
+
+    function renderLines(){
+      var r = calc();
+      linesEl.innerHTML = '';
+      S.people.forEach(function(who, i){
+        var line = document.createElement('div');
+        line.className = 'sp-line';
+
+        var left = document.createElement('div');
+        var name = document.createElement('span');
+        name.className = 'sp-who';
+        name.textContent = label(i);
+        var sub = document.createElement('span');
+        sub.className = 'sp-sub';
+        sub.textContent = formatCents(r.subtotals[i]) + ' + ' + formatCents(r.tipEach[i]) + ' tip';
+        left.appendChild(name);
+        left.appendChild(sub);
+
+        var owes = document.createElement('span');
+        owes.className = 'sp-owes';
+        owes.textContent = formatCents(r.perPerson[i]);
+
+        line.appendChild(left);
+        line.appendChild(owes);
+        linesEl.appendChild(line);
+      });
+      grandEl.textContent = formatCents(r.grandTotal);
+    }
+
+    function renderResult(){ renderTipControls(); renderLines(); }
+
+    function summary(){
+      var r = calc();
+      var out = [document.title + ' — split ' + S.people.length + ' ways'];
+      S.people.forEach(function(who, i){
+        out.push(label(i) + ': ' + formatCents(r.perPerson[i]) +
+                 ' (' + formatCents(r.subtotals[i]) + ' + ' + formatCents(r.tipEach[i]) + ' tip)');
+      });
+      out.push('Total incl. tip: ' + formatCents(r.grandTotal));
+      return out.join('\\n');
+    }
+
+    // --- Steps ---------------------------------------------------------------------------------
+    function syncNav(){
+      backBtn.hidden = S.step === 0;
+      nextBtn.hidden = S.step === 0 || S.step === 3;
+      nextBtn.textContent = S.step === 2 ? 'See the split' : 'Next';
+      // An empty bill has nothing to divide, and an empty result screen reads as broken rather
+      // than unfinished.
+      nextBtn.disabled = S.step === 1 && !S.items.length;
+    }
+
+    function go(step){
+      S.step = step;
+      save();
+      for(var i = 0; i < PANES.length; i++) document.getElementById(PANES[i]).hidden = i !== step;
+      document.getElementById('split-sub').textContent = SUBS[step];
+      if(step === 1){ renderItems(); syncItems(); }
+      if(step === 2){ renderNames(); renderAssign(); syncWho(); }
+      if(step === 3){ renderResult(); }
+      syncNav();
+    }
+
+    document.getElementById('open-split').onclick = function(){
+      sheet.hidden = true;
+      splitEl.hidden = false;
+      totalEl.value = S.billTotalCents === null || S.billTotalCents === undefined ? '' : rands(S.billTotalCents);
+      tipAmtEl.value = S.tip.mode === 'amount' ? rands(S.tip.value) : '';
+      go(S.items.length ? (S.step || 0) : 0);
+    };
+    document.getElementById('close-split').onclick = function(){ splitEl.hidden = true; };
+    document.getElementById('sp-manual').onclick = function(){ go(1); };
+    backBtn.onclick = function(){ go(S.step - 1); };
+    nextBtn.onclick = function(){ go(S.step + 1); };
+
+    document.getElementById('sp-add').onclick = function(){
+      S.items.push({ name: '', cents: 0, who: [] });
+      save();
+      renderItems();
+      syncItems();
+      var names = listEl.querySelectorAll('.sp-name');
+      if(names.length) names[names.length - 1].focus();
+    };
+
+    totalEl.addEventListener('input', function(){
+      var cents = parsePrice(totalEl.value);
+      S.billTotalCents = (cents === null || isNaN(cents)) ? null : cents;
+      save();
+      syncItems();
+    });
+
+    moreBtn.onclick = function(){
+      if(S.people.length >= MAX_PEOPLE) return;
+      S.people.push('Person ' + (S.people.length + 1));
+      save();
+      renderNames();
+      renderAssign();
+      syncWho();
+    };
+
+    fewerBtn.onclick = function(){
+      if(S.people.length <= 2) return;
+      var gone = S.people.length - 1;
+      S.people.pop();
+      // Drop the departed person from every line they were on. Leave them and their share becomes
+      // money the totals quietly stop mentioning.
+      S.items.forEach(function(item){
+        var at = (item.who || []).indexOf(gone);
+        if(at > -1) item.who.splice(at, 1);
+      });
+      save();
+      renderNames();
+      renderAssign();
+      syncWho();
+    };
+
+    (function(){
+      var tabs = document.querySelectorAll('.sp-tab');
+      for(var i = 0; i < tabs.length; i++){
+        tabs[i].onclick = (function(tab){
+          return function(){
+            S.tip = tab.dataset.tip === 'amount'
+              ? { mode: 'amount', value: S.tip.mode === 'amount' ? S.tip.value : 0 }
+              : { mode: 'percent', value: 10 };
+            save();
+            renderResult();
+          };
+        })(tabs[i]);
+      }
+    })();
+
+    tipAmtEl.addEventListener('input', function(){
+      var cents = parsePrice(tipAmtEl.value);
+      S.tip = { mode: 'amount', value: (cents === null || isNaN(cents)) ? 0 : cents };
+      save();
+      // Only the numbers redraw. renderTipControls() here would rebuild the field being typed into
+      // and take the caret with it.
+      renderLines();
+    });
+
+    document.getElementById('sp-copy').onclick = function(){
+      if(!navigator.clipboard) return;
+      navigator.clipboard.writeText(summary()).then(function(){
+        var note = document.getElementById('sp-copied');
+        note.hidden = false;
+        setTimeout(function(){ note.hidden = true; }, 2000);
+      }, function(){});
+    };
+
+    document.getElementById('sp-reset').onclick = function(){
+      S = fresh();
+      totalEl.value = '';
+      tipAmtEl.value = '';
+      save();
+      go(0);
+    };
+
+    // --- The camera ----------------------------------------------------------------------------
+    (function(){
+      var photo = document.getElementById('sp-photo');
+      var note = document.getElementById('sp-scan-note');
+      var scanning = false;
+
+      // ponytail: fetched on first scan, never on page load. A menu opened off a coaster must not
+      // pay for a feature most diners never touch, and Tesseract's runtime downloads dwarf this
+      // whole page.
+      function loadOcr(){
+        if(window.Tesseract) return Promise.resolve();
+        return new Promise(function(resolve, reject){
+          var tag = document.createElement('script');
+          tag.src = TESSERACT;
+          tag.onload = resolve;
+          tag.onerror = function(){ reject(new Error('cdn')); };
+          document.head.appendChild(tag);
+        });
+      }
+
+      // Downscale, greyscale, then cut to black and white against the image's own mean brightness.
+      // This is the largest accuracy lever Tesseract has here: it expects black print on white
+      // paper, and what it gets is grey thermal print on cream card under tungsten light.
+      //
+      // ponytail: one global threshold for the whole frame. A bill photographed half in shadow
+      // loses the dark half -- go per-tile (adaptive) only if that turns out to be the common
+      // failure rather than a rare one.
+      function prep(file){
+        return new Promise(function(resolve, reject){
+          var img = new Image();
+          var url = URL.createObjectURL(file);
+          img.onload = function(){
+            URL.revokeObjectURL(url);
+            var scale = Math.min(1, 1500 / Math.max(img.width, img.height));
+            var canvas = document.createElement('canvas');
+            canvas.width = Math.round(img.width * scale);
+            canvas.height = Math.round(img.height * scale);
+            var ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+            var data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            var px = data.data, i, grey, sum = 0;
+            for(i = 0; i < px.length; i += 4){
+              grey = px[i] * 0.299 + px[i + 1] * 0.587 + px[i + 2] * 0.114;
+              px[i] = px[i + 1] = px[i + 2] = grey;
+              sum += grey;
+            }
+            // Cut below the mean, not at it: paper fills most of the frame so the mean sits well
+            // up in the whites, and cutting exactly there eats the thin strokes.
+            var cut = (sum / (px.length / 4)) * 0.88;
+            for(i = 0; i < px.length; i += 4){
+              grey = px[i] < cut ? 0 : 255;
+              px[i] = px[i + 1] = px[i + 2] = grey;
+            }
+            ctx.putImageData(data, 0, 0);
+            resolve(canvas);
+          };
+          img.onerror = function(){ URL.revokeObjectURL(url); reject(new Error('image')); };
+          img.src = url;
+        });
+      }
+
+      photo.addEventListener('change', function(){
+        var file = photo.files && photo.files[0];
+        // Cleared immediately so re-picking the same photo still fires a change event.
+        photo.value = '';
+        if(!file || scanning) return;
+        scanning = true;
+        note.hidden = false;
+        note.textContent = 'Getting the scanner ready…';
+
+        var worker = null;
+        loadOcr()
+          .then(function(){ return prep(file); })
+          .then(function(canvas){
+            note.textContent = 'Reading the bill…';
+            return window.Tesseract.createWorker('eng', 1, {
+              logger: function(m){
+                if(m.status === 'recognizing text'){
+                  note.textContent = 'Reading the bill… ' + Math.round(m.progress * 100) + '%';
+                }
+              }
+            }).then(function(w){
+              worker = w;
+              // A bill is a single column. The default segmentation mode hunts for blocks and
+              // merges neighbouring columns into one line, which is precisely the failure that
+              // lands a price against the wrong item.
+              return w.setParameters({ tessedit_pageseg_mode: '4' }).then(function(){
+                return w.recognize(canvas);
+              });
+            });
+          })
+          .then(function(res){
+            var found = parseReceipt(res.data.text);
+            found.forEach(function(item){ item.who = []; });
+            // Appended rather than replacing: scanning the second page of a long bill should leave
+            // you holding both, and a bad photo is one Start over away.
+            S.items = S.items.concat(found);
+            save();
+            note.textContent = found.length
+              ? ('Found ' + found.length + (found.length === 1 ? ' line' : ' lines') + ' — check them over.')
+              : 'Could not read that one. Try again in better light, or type the items in.';
+            if(found.length) go(1);
+          })
+          .catch(function(){
+            note.textContent = 'Could not read that one. You can type the items in instead.';
+          })
+          .then(function(){
+            scanning = false;
+            // The worker holds the language data in memory; a phone that has been at this for a
+            // few scans will thank us.
+            if(worker) worker.terminate();
+          });
+      });
+    })();
+  })();
 })();
 </script>
 </body>

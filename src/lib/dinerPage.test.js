@@ -66,6 +66,25 @@ test('no incentive language anywhere', () => {
   }
 });
 
+test('the bill splitter ships its maths to the client, not a second copy of it', () => {
+  // parseReceipt/settle (lib/splitBill.js) and parsePrice/formatCents (lib/money.js) are inlined
+  // by toString(). Break their purity and the page still renders -- it just throws on a phone.
+  // This is what catches that, the same way hours.test.js guards status().
+  for (const fn of ['function parseReceipt(', 'function settle(', 'function parsePrice(', 'function formatCents(']) {
+    assert.ok(html.includes(fn), `${fn} must reach the client`);
+  }
+  // Nothing about the splitter may reach the network: no route, no upload, no retained image.
+  assert.ok(!/\/api\/public\/[^']*\/split/.test(html));
+});
+
+test('the splitter is offered even where table service is switched off', () => {
+  // It is a calculator on the diner's own phone, so it has nothing to do with serviceEnabled --
+  // gate the whole sheet group again and it silently vanishes for most restaurants.
+  const plain = renderPage({ restaurant, menu });
+  assert.ok(plain.includes('id="open-split"'));
+  assert.ok(!plain.includes('data-kind="waiter"'));
+});
+
 test('contact capture carries its purpose line and a retention promise', () => {
   // COMPLIANCE.md rule 6 (POPIA).
   assert.ok(html.includes('get back to you about this visit'));
@@ -76,6 +95,44 @@ test('a restaurant with no Place ID gets no broken link', () => {
   const noPlace = renderPage({ restaurant: { ...restaurant, google_place_id: null }, menu });
   assert.ok(!noPlace.includes('writereview'));
   assert.ok(!noPlace.includes('id="review-primary"'));
+});
+
+// --- Branding and the owner's preview frame ------------------------------------------------
+
+test('no brand hue renders no theme block at all', () => {
+  assert.ok(!html.includes('--accent:hsl('));
+});
+
+test('a brand hue moves the accent family in both palettes, and nothing else', () => {
+  const themed = renderPage({ restaurant: { ...restaurant, brand_hue: 200 }, menu });
+  // Light and dark stops, both present -- a theme that only lands in one palette is a menu that
+  // reverts to brass the moment a diner's phone is in the other mode.
+  assert.ok(themed.includes('--accent:hsl(200,57%,35%)'));
+  assert.ok(themed.includes('--accent:hsl(200,50%,57%)'));
+  assert.ok(themed.includes('--lit:hsl(200,52%,47%)'));
+  assert.ok(themed.includes('--card-open-border:hsla(200,52%,39%,.35)'));
+  // The ink-tinted hairlines are deliberately NOT branded. If --border ever shows up in the theme
+  // block, the menu's structure has started wearing the brand colour.
+  assert.ok(!/--border(-strong)?:hsl/.test(themed));
+});
+
+test('a junk hue is ignored rather than injected into the stylesheet', () => {
+  for (const bad of ['400</style><script>', null, undefined, 'red', 999, -1, NaN]) {
+    const out = renderPage({ restaurant: { ...restaurant, brand_hue: bad }, menu });
+    assert.ok(!out.includes('--accent:hsl('), `hue ${String(bad)} produced a theme block`);
+    assert.ok(!out.includes('<script>alert'), `hue ${String(bad)} escaped the style block`);
+  }
+});
+
+test('preview mode writes nothing: no scan beacon, no fetch behind any tap', () => {
+  const frame = renderPage({ restaurant, menu: [], preview: true });
+  assert.ok(!frame.includes('sendBeacon'));
+  assert.ok(!frame.includes("method:'POST'"));
+  assert.ok(!frame.includes("method:'DELETE'"));
+  // The real page must still do all three, or the preview guard has leaked into it.
+  assert.ok(html.includes('sendBeacon'));
+  assert.ok(html.includes("method:'POST'"));
+  assert.ok(html.includes("method:'DELETE'"));
 });
 
 // --- Rendering ---------------------------------------------------------------------------
@@ -603,4 +660,91 @@ test('Suggestions is always the last row in the sheet', () => {
     assert.ok(rowStarts.length > 1, 'the sheet has more than one row to order');
     assert.equal(sheet.indexOf('id="open-suggest"') > rowStarts[rowStarts.length - 1], true, 'Suggestions is the last row');
   });
+});
+
+// --- size variants -------------------------------------------------------------------------
+
+test('sizes render on their own line, in the order the owner typed them', () => {
+  const sized = renderPage({
+    restaurant,
+    menu: [{
+      id: 'c1',
+      name: 'Drinks',
+      items: [{
+        id: 'i1',
+        name: 'Coke',
+        available: true,
+        price_variants: [{ label: '300ml', price_cents: 2500 }, { label: '500ml', price_cents: 3500 }],
+      }],
+    }],
+  });
+  const row = sized.match(/<span class="sizes">.*?<\/span><\/span>\s*<\/span>/s)[0];
+  assert.ok(row.indexOf('300ml') < row.indexOf('500ml'));
+  assert.ok(row.includes('R25.00') && row.includes('R35.00'));
+  // No price_cents on this dish, so nothing renders in the title line's price slot.
+  assert.ok(!sized.includes('<span class="price">'));
+});
+
+test('a size label is escaped like every other owner-typed string', () => {
+  const nasty = renderPage({
+    restaurant,
+    menu: [{ id: 'c1', name: 'Drinks', items: [{ id: 'i1', name: 'Coke', available: true, price_variants: [{ label: '"><img onerror=alert(1)>', price_cents: 100 }] }] }],
+  });
+  assert.ok(!nasty.includes('<img onerror'));
+});
+
+// Every dish on the menu before the migration, and most dishes after it.
+test('no sizes renders no size line at all', () => {
+  assert.ok(!html.includes('class="sizes"'));
+});
+
+test('size labels are searchable, so "500ml" finds the drink', () => {
+  const sized = renderPage({
+    restaurant,
+    menu: [{ id: 'c1', name: 'Drinks', items: [{ id: 'i1', name: 'Coke', available: true, price_variants: [{ label: '500ml', price_cents: 3500 }] }] }],
+  });
+  assert.ok(/data-name="[^"]*500ml[^"]*"/.test(sized));
+});
+
+// --- add-ons -------------------------------------------------------------------------------
+
+const withAddOns = (add_ons, extra = {}) =>
+  renderPage({
+    restaurant,
+    menu: [{ id: 'c1', name: 'Burgers', items: [{ id: 'i1', name: 'Cheeseburger', available: true, price_cents: 8900, add_ons, ...extra }] }],
+  });
+
+test('add-ons render in the opened panel, in the order the owner typed them', () => {
+  const page = withAddOns([{ label: 'Extra cheese', price_cents: 1000 }, { label: 'Bacon', price_cents: 1500 }]);
+  assert.ok(page.includes('<div class="addons">'));
+  assert.ok(page.indexOf('Extra cheese') < page.indexOf('Bacon'));
+  assert.ok(page.includes('+R10.00') && page.includes('+R15.00'));
+  // Inside the panel, not on the price row -- the row still shows only the dish's own price.
+  assert.ok(page.indexOf('<span class="price">') < page.indexOf('class="addons"'));
+});
+
+// "+R0.00" reads as a pricing bug; the word does not.
+test('a zero-priced add-on renders as free', () => {
+  const page = withAddOns([{ label: 'Swap for salad', price_cents: 0 }]);
+  assert.ok(page.includes('>free<'));
+  assert.ok(!page.includes('+R0.00'));
+});
+
+test('an add-on label is escaped like every other owner-typed string', () => {
+  assert.ok(!withAddOns([{ label: '"><img onerror=alert(1)>', price_cents: 100 }]).includes('<img onerror'));
+});
+
+// Every dish on the menu before the migration, and most dishes after it.
+test('no add-ons renders no add-on block at all', () => {
+  assert.ok(!html.includes('class="addons"'));
+});
+
+test('add-on labels are searchable, so "bacon" finds the burger you can put it on', () => {
+  assert.ok(/data-name="[^"]*bacon[^"]*"/.test(withAddOns([{ label: 'Bacon', price_cents: 1500 }])));
+});
+
+// A sold-out dish is a flat row with no panel to open, so there is nowhere to put them -- and
+// nothing to add them to either.
+test('a sold-out dish shows no add-ons', () => {
+  assert.ok(!withAddOns([{ label: 'Bacon', price_cents: 1500 }], { available: false }).includes('class="addons"'));
 });

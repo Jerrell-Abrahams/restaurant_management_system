@@ -18,9 +18,17 @@ export function AuthProvider({ children }) {
       setMeError(null);
     } catch (err) {
       // 403 is the ordinary case, not a fault: a signed-in user of one of the sibling apps on this
-      // shared Supabase project who simply is not staff here.
+      // shared Supabase project who simply is not staff here. Signed out locally (not the 'global'
+      // default, which would revoke the token and log them out of that sibling app too) so a
+      // Google sign-in from a stranger with no restaurant.staff row doesn't sit around looking
+      // authenticated in this console.
       setMe(null);
-      setMeError(err.status === 403 ? null : err.message);
+      if (err.status === 403) {
+        setMeError(null);
+        supabase.auth.signOut({ scope: 'local' });
+      } else {
+        setMeError(err.message);
+      }
     }
   }, []);
 
@@ -53,6 +61,8 @@ export function AuthProvider({ children }) {
     // denial until that request lands.
     loading: session === undefined || (!!session && me === undefined),
     login: (email, password) => supabase.auth.signInWithPassword({ email, password }),
+    loginWithGoogle: () =>
+      supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } }),
     logout: () => supabase.auth.signOut(),
   };
 

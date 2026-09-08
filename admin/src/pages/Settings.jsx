@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { ImagePlus, Loader2, Upload } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import * as api from '../api';
+import { API_BASE_URL } from '../supabaseClient';
 import { Button } from '../components/ui/Button';
 import { Card, CardHeader, CardTitle } from '../components/ui/Card';
 import { cn } from '../components/ui/cn';
@@ -19,6 +20,11 @@ export function Settings() {
   const [busy, setBusy] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const logoInputRef = useRef(null);
+  // Remounts the preview iframe. The frame shows the real diner page from the API, a different
+  // origin than this SPA, so there is nothing in it to reach into and repaint -- a reload is the
+  // only way to show a change, and the only way that cannot drift from what a diner sees.
+  const [previewV, setPreviewV] = useState(0);
+  const refreshPreview = () => setPreviewV((v) => v + 1);
 
   useEffect(() => {
     if (restaurant) {
@@ -36,11 +42,17 @@ export function Settings() {
         autoDismissMinutes: String(restaurant.service_requests_auto_dismiss_minutes || 'off'),
         chimeMuted: !!restaurant.service_requests_chime_muted,
         logoUrl: restaurant.logo_url || '',
+        brandHue: restaurant.brand_hue ?? '',
       });
     }
   }, [restaurant]);
 
   if (!form) return null;
+
+  // 38 is the default brass hue the diner page ships (see themeCss in src/lib/dinerPage.js) -- the
+  // slider has to sit somewhere, and sitting on the colour actually being rendered means picking
+  // it up and putting it back down is a no-op rather than a silent theme change.
+  const hue = form.brandHue === '' ? 38 : form.brandHue;
 
   // Sent as raw base64, not a data URL -- src/lib/logo.js decodes the field directly, the same
   // shape the existing QR upload already uses for the same reason (no multipart-parsing dep in
@@ -62,6 +74,7 @@ export function Settings() {
       const { logoUrl } = await api.uploadLogo(restaurantId, base64);
       setForm((f) => ({ ...f, logoUrl }));
       reload();
+      refreshPreview();
       toast.success('Logo updated');
     } catch (err) {
       toast.error(err.message);
@@ -75,6 +88,20 @@ export function Settings() {
       await api.updateRestaurant(restaurantId, { logoUrl: null });
       setForm((f) => ({ ...f, logoUrl: '' }));
       reload();
+      refreshPreview();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
+
+  // Saves on release, not on every pixel of the drag -- dragging a range input fires a change per
+  // step, which would be ~360 PATCHes across one sweep. Same "applies immediately, no unsaved
+  // state" contract as the logo above: the preview frame can then only ever show the truth.
+  async function saveHue(hue) {
+    try {
+      await api.updateRestaurant(restaurantId, { brandHue: hue === '' ? null : hue });
+      reload();
+      refreshPreview();
     } catch (err) {
       toast.error(err.message);
     }
@@ -173,6 +200,74 @@ export function Settings() {
           >
             <Input value={`/${restaurant.slug}`} disabled />
           </Field>
+        </div>
+      </Card>
+
+      <Card className="mb-4 p-0">
+        <CardHeader><CardTitle>Theme</CardTitle></CardHeader>
+        <div className="flex flex-col gap-5 p-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex min-w-0 flex-1 flex-col gap-3">
+            <p className="text-[11.5px] leading-relaxed text-dim">
+              Your colour on the menu: prices, dietary and promo pills, the open-now badge, and the
+              highlight around an opened dish. Card outlines and body text stay neutral — those are
+              what keep the menu readable on a phone in a dark restaurant.
+            </p>
+            <div className="flex items-center gap-3">
+              <span
+                className="h-9 w-9 shrink-0 rounded-full border border-border-2"
+                style={{ background: `hsl(${hue},57%,35%)` }}
+              />
+              {/* Hue only -- saturation and lightness are fixed by the recipe, which is what makes
+                  any position on this slider contrast-safe. A 2D picker would hand owners the two
+                  axes that can produce an unreadable menu. */}
+              <input
+                type="range"
+                min="0"
+                max="360"
+                value={hue}
+                aria-label="Brand colour"
+                className="h-9 w-full cursor-pointer"
+                style={{ accentColor: `hsl(${hue},57%,35%)` }}
+                onChange={(e) => setForm({ ...form, brandHue: Number(e.target.value) })}
+                onPointerUp={(e) => saveHue(Number(e.target.value))}
+                onKeyUp={(e) => e.key.startsWith('Arrow') && saveHue(Number(e.target.value))}
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] text-dim">
+                {form.brandHue === '' ? 'Using the default' : 'Saved as you release the slider'}
+              </span>
+              {form.brandHue !== '' && (
+                <button
+                  type="button"
+                  onClick={() => { setForm({ ...form, brandHue: '' }); saveHue(''); }}
+                  className="text-[11.5px] text-bad hover:underline"
+                >
+                  Use the default
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="flex shrink-0 flex-col gap-2">
+            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-dim">Live preview</p>
+            <div className="w-[330px] max-w-full overflow-hidden rounded-[26px] border border-border-2 bg-panel p-2">
+              {/* The real diner page, not a mock of it -- served from the API with ?preview=1, which
+                  strips the scan beacon and neuters every write (src/lib/dinerPage.js). A rebuilt
+                  approximation in React would be a second menu renderer to keep in sync forever. */}
+              <iframe
+                key={previewV}
+                title="Menu preview"
+                src={`${API_BASE_URL}/${restaurant.slug}?preview=1`}
+                className="h-[560px] w-full rounded-[18px] border-0 bg-bg"
+              />
+            </div>
+            <p className="text-[11px] leading-relaxed text-dim">
+              Your live menu. Tapping around in here records nothing — no scans, no ratings, no
+              waiter calls. It follows this computer&rsquo;s light or dark setting; the toggle in
+              the menu&rsquo;s own header switches it.
+            </p>
+          </div>
         </div>
       </Card>
 

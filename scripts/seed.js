@@ -53,7 +53,10 @@ const MENU = [
     items: [
       { name: 'Pork Ribs 500g', description: 'Basted, with chips and slaw', price: 'R189', quality: 4.7 },
       { name: 'T-Bone 400g', description: 'Flame grilled, with two sides', price: 'R215', quality: 4.3 },
-      { name: 'Beef Burger', description: '200g patty, bacon, cheddar', price: 'R125', quality: 4.4, drift: -1.4 },
+      // A flat price plus extras -- the other shape, and the one add-ons exist for. Sizes and
+      // add-ons are independent columns; a dish can carry either, both or neither.
+      { name: 'Beef Burger', description: '200g patty, bacon, cheddar', price: 'R125', quality: 4.4, drift: -1.4,
+        addOns: [{ label: 'Extra patty', price_cents: 4500 }, { label: 'Extra cheese', price_cents: 1200 }, { label: 'Fried egg', price_cents: 900 }, { label: 'Salad instead of chips', price_cents: 0 }] },
       { name: 'Chicken Espetada', description: 'Skewered, on the hanging rack', price: 'R165', quality: 4.0 },
       { name: 'Lamb Chops', description: 'Three chops, rosemary salt', price: 'R235', quality: 3.9, available: false },
     ],
@@ -73,6 +76,9 @@ const MENU = [
       { name: 'Malva Pudding', description: 'With custard', price: 'R58', quality: 4.8 },
       { name: 'Ice Cream & Chocolate', description: 'Two scoops', price: 'R42', quality: 3.4 },
       { name: 'Dom Pedro', description: 'Whisky or Kahlua', price: 'R55', quality: 4.1 },
+      // Priced by size, so no flat price -- the two columns are independent and this is the
+      // shape most drinks take. See src/db/menu_variants.sql.
+      { name: 'Craft Ginger Beer', description: 'House brewed, on ice', quality: 4.3, variants: [{ label: '300ml', price_cents: 3200 }, { label: '500ml', price_cents: 4500 }] },
     ],
   },
 ];
@@ -155,7 +161,7 @@ async function drop() {
       .single();
 
     for (const [ii, item] of cat.items.entries()) {
-      const cents = Math.round(parseFloat(item.price.replace('R', '')) * 100);
+      const cents = item.price ? Math.round(parseFloat(item.price.replace('R', '')) * 100) : null;
       const { data: row } = await db
         .from('menu_items')
         .insert({
@@ -163,6 +169,8 @@ async function drop() {
           name: item.name,
           description: item.description,
           price_cents: cents,
+          price_variants: item.variants || [],
+          add_ons: item.addOns || [],
           available: item.available !== false,
           position: ii,
         })

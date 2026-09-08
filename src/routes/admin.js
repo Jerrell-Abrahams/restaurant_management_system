@@ -13,8 +13,8 @@ const qr = require('../lib/qr');
 const { hoursError } = require('../lib/hours');
 const { allergensError, dietError, spiceLevelOf } = require('../lib/dietary');
 const { promoLabelError } = require('../lib/promotions');
+const { parseVariants, parseAddOns } = require('../lib/variants');
 const { decodeLogo } = require('../lib/logo');
-const { ACCENT_PRESETS } = require('../lib/brandPresets');
 
 const router = express.Router();
 router.use(auth);
@@ -137,8 +137,14 @@ router.patch('/restaurants/:id', async (req, res) => {
   // Branding. logoUrl is normally only ever written by POST .../logo below; PATCHing it directly
   // is how "remove logo" clears it, the same escape hatch every other nullable text field here has.
   if ('logoUrl' in req.body) patch.logo_url = req.body.logoUrl || null;
-  if ('accentColor' in req.body) {
-    patch.accent_color = Object.hasOwn(ACCENT_PRESETS, req.body.accentColor) ? req.body.accentColor : null;
+  // A hue, 0-360. Anything else -- including the empty string the "use the default" button sends
+  // -- is null, which is "no theme", not an error: the diner page then renders its default brass
+  // palette. Only the hue is stored because only the hue is safe to vary; see themeCss() in
+  // dinerPage.js for why saturation and lightness are not the owner's to pick.
+  if ('brandHue' in req.body) {
+    // typeof, not Number(): Number(null) is 0, which would make "use the default" save red.
+    const h = req.body.brandHue;
+    patch.brand_hue = typeof h === 'number' && Number.isFinite(h) && h >= 0 && h <= 360 ? Math.round(h) : null;
   }
 
   if (req.isAdmin) {
@@ -389,7 +395,7 @@ router.post('/restaurants/:id/items', async (req, res) => {
   const ctx = await resolve(req, res, { write: true });
   if (!ctx) return;
 
-  const { categoryId, name, description, price, position, spiceLevel, diet, allergens, promoLabel } = req.body;
+  const { categoryId, name, description, price, position, spiceLevel, diet, allergens, promoLabel, variants, addOns } = req.body;
   if (!categoryId || !name) return res.status(400).json({ error: 'categoryId and name are required' });
 
   const owned = await ownCategoryIds(ctx.restaurant.id);
@@ -406,6 +412,10 @@ router.post('/restaurants/:id/items', async (req, res) => {
   if (allergensErr) return res.status(400).json({ error: allergensErr });
   const promoErr = promoLabelError(promoLabel);
   if (promoErr) return res.status(400).json({ error: promoErr });
+  const parsedVariants = parseVariants(variants);
+  if (parsedVariants.error) return res.status(400).json({ error: parsedVariants.error });
+  const parsedAddOns = parseAddOns(addOns);
+  if (parsedAddOns.error) return res.status(400).json({ error: parsedAddOns.error });
 
   const { data, error } = await db
     .from('menu_items')
@@ -419,6 +429,8 @@ router.post('/restaurants/:id/items', async (req, res) => {
       diet: diet || null,
       allergens: allergens || [],
       promo_label: promoLabel || null,
+      price_variants: parsedVariants.variants,
+      add_ons: parsedAddOns.addOns,
     })
     .select()
     .single();
@@ -459,6 +471,16 @@ router.patch('/restaurants/:id/items/:itemId', async (req, res) => {
     const promoErr = promoLabelError(req.body.promoLabel);
     if (promoErr) return res.status(400).json({ error: promoErr });
     patch.promo_label = req.body.promoLabel || null;
+  }
+  if ('variants' in req.body) {
+    const parsed = parseVariants(req.body.variants);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    patch.price_variants = parsed.variants;
+  }
+  if ('addOns' in req.body) {
+    const parsed = parseAddOns(req.body.addOns);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    patch.add_ons = parsed.addOns;
   }
 
   const owned = await ownCategoryIds(ctx.restaurant.id);

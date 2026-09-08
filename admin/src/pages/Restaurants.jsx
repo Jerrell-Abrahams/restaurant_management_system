@@ -40,7 +40,7 @@ export function Restaurants() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
-      <div className="mb-6 flex items-center justify-between gap-3">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-serif text-[26px] font-medium tracking-[-0.015em]">Restaurants</h1>
           <p className="mt-0.5 text-[12.5px] text-muted">{me.email}</p>

@@ -125,10 +125,15 @@ router.get('/:slug', async (req, res) => {
     items: (items || []).filter((i) => i.category_id === c.id),
   }));
 
+  // ?preview=1 is the owner's Settings frame (admin/src/pages/Settings.jsx). Same page, no writes
+  // (dinerPage.js strips them), and never cached -- the whole point of the frame is to show the
+  // theme the owner just saved a second ago.
+  const preview = req.query.preview === '1';
+  if (preview) res.set('Cache-Control', 'no-store');
   // Menus change rarely and this is the cold path on restaurant wifi, so a short shared cache is
   // worth more than instant propagation of a price edit.
-  res.set('Cache-Control', 'public, max-age=60');
-  res.type('html').send(renderPage({ restaurant: ctx.restaurant, menu }));
+  else res.set('Cache-Control', 'public, max-age=60');
+  res.type('html').send(renderPage({ restaurant: ctx.restaurant, menu, preview }));
 });
 
 // --- QR scans ------------------------------------------------------------------------------

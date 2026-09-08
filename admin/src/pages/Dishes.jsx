@@ -42,7 +42,7 @@ export function Dishes() {
           </p>
         </Card>
       ) : (
-        <div className="mb-5 grid gap-3 md:grid-cols-2">
+        <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-2">
           <Board title="Best rated" rows={boards.best} />
           <Board title="Needs work" rows={boards.worst} />
           <Board title="Most rated" rows={boards.mostRated} metric="count" />

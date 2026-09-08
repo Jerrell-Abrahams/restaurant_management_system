@@ -16,6 +16,16 @@ import { HoursEditor, isPaused } from '../components/HoursEditor';
 import { ALLERGENS, ALLERGEN_LABELS } from '../lib/dietary';
 
 const rands = (cents) => (cents === null || cents === undefined ? '' : `R${(cents / 100).toFixed(2)}`);
+const MAX_VARIANTS = 4; // Matches src/lib/variants.js and the check constraint in db/menu_variants.sql.
+const MAX_ADD_ONS = 6; // Same, against db/menu_addons.sql.
+// Sizes win the list row's price column when a dish has them -- the range is what the owner is
+// scanning for. The modal is where both numbers are visible at once.
+const priceSummary = (item) => {
+  const cents = (item.price_variants || []).map((v) => v.price_cents);
+  if (!cents.length) return rands(item.price_cents);
+  const [lo, hi] = [Math.min(...cents), Math.max(...cents)];
+  return lo === hi ? rands(lo) : `${rands(lo)}–${rands(hi)}`;
+};
 const DIET_LABEL = { vegetarian: 'VEG', vegan: 'VEGAN' };
 // Same six values src/lib/promotions.js validates server-side -- kept in sync by convention, same
 // as Settings.jsx's DAY_KEYS, since the admin console and the server are separate deployables.
@@ -133,7 +143,7 @@ export function MenuEditor() {
     <div>
       <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-serif text-[26px] font-medium tracking-[-0.015em]">Menu</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {menu.length > 1 && (
             <Button variant="ghost" onClick={toggleCollapseAll} title={allCollapsed ? 'Expand all sections' : 'Collapse all sections'}>
               {allCollapsed ? <ChevronsUpDown /> : <ChevronsDownUp />} {allCollapsed ? 'Expand all' : 'Collapse all'}
@@ -250,10 +260,12 @@ export function MenuEditor() {
                           diet: item.diet || '',
                           allergens: item.allergens || [],
                           promoLabel: item.promo_label || '',
+                          variants: (item.price_variants || []).map((v) => ({ label: v.label, price: rands(v.price_cents) })),
+                          addOns: (item.add_ons || []).map((a) => ({ label: a.label, price: rands(a.price_cents) })),
                         })
                       }
                     >
-                      <div className="flex items-baseline gap-2">
+                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                         <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-text">{item.name}</span>
                         {PROMO_LABEL_TEXT[item.promo_label] && (
                           <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.08em] text-accent">{PROMO_LABEL_TEXT[item.promo_label]}</span>
@@ -277,7 +289,7 @@ export function MenuEditor() {
                       {item.description && <div className="truncate text-[12.5px] text-muted">{item.description}</div>}
                     </button>
 
-                    <span className="shrink-0 text-[13px] tabular-nums text-muted">{rands(item.price_cents)}</span>
+                    <span className="shrink-0 text-[13px] tabular-nums text-muted">{priceSummary(item)}</span>
 
                     {/* The daily toggle. Deliberately one tap from the list, not buried in a modal
                         -- "86 the ribs" happens mid-service with one hand. */}
@@ -406,7 +418,38 @@ const SPICE_LEVELS = [0, 1, 2, 3];
 const spiceIcons = (n, size = 12) => Array.from({ length: n }, (_, i) => <Flame key={i} size={size} />);
 const spiceLabel = (n) => (n === 0 ? 'None' : <span className="inline-flex gap-px text-accent">{spiceIcons(n)}</span>);
 
-const EMPTY_ITEM_FORM = { name: '', description: '', price: '', spiceLevel: 0, diet: 'none', allergens: [], promoLabel: 'none' };
+const EMPTY_ITEM_FORM = { name: '', description: '', price: '', spiceLevel: 0, diet: 'none', allergens: [], promoLabel: 'none', variants: [], addOns: [] };
+
+// Rows are edited in place and removed by their index -- no ids, because array order is the only
+// identity one of these has (it is the display order on the menu, and that is all it is).
+function PriceRows({ rows, onChange, max, noun, addLabel, labelPlaceholder, pricePlaceholder }) {
+  const set = (i, patch) => onChange(rows.map((r, n) => (n === i ? { ...r, ...patch } : r)));
+  return (
+    <div className="flex flex-col gap-1.5">
+      {rows.map((r, i) => (
+        <div key={i} className="flex items-center gap-1.5">
+          {/* Width lives on wrappers, not on the Inputs: cn() here is a plain join with no
+              tailwind-merge, so a w-28 passed to Input would sit alongside its own w-full
+              and the winner would come down to Tailwind's stylesheet order. */}
+          <div className="min-w-0 flex-1">
+            <Input value={r.label} onChange={(e) => set(i, { label: e.target.value })} placeholder={labelPlaceholder} maxLength={20} />
+          </div>
+          <div className="w-28 shrink-0">
+            <Input value={r.price} onChange={(e) => set(i, { price: e.target.value })} placeholder={pricePlaceholder} inputMode="decimal" />
+          </div>
+          <IconButton type="button" aria-label={`Remove ${noun}`} title={`Remove ${r.label || `this ${noun}`}`} onClick={() => onChange(rows.filter((_, n) => n !== i))}>
+            <Trash2 />
+          </IconButton>
+        </div>
+      ))}
+      {rows.length < max && (
+        <Button type="button" variant="ghost" className="self-start" onClick={() => onChange([...rows, { label: '', price: '' }])} title={addLabel}>
+          <Plus /> {addLabel}
+        </Button>
+      )}
+    </div>
+  );
+}
 
 function ItemModal({ state, saving, onClose, onSave }) {
   const [form, setForm] = useState(EMPTY_ITEM_FORM);
@@ -422,8 +465,13 @@ function ItemModal({ state, saving, onClose, onSave }) {
       diet: state.diet || 'none',
       allergens: state.allergens || [],
       promoLabel: state.promoLabel || 'none',
+      variants: state.variants || [],
+      addOns: state.addOns || [],
     });
   }, [state]);
+
+  // Sizes and add-ons are the same editor pointed at a different key on the form.
+  const setRows = (key, rows) => setForm((f) => ({ ...f, [key]: rows }));
 
   function toggleAllergen(a) {
     setForm((f) => ({
@@ -451,8 +499,30 @@ function ItemModal({ state, saving, onClose, onSave }) {
         <Field label="Description" hint="Optional.">
           <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Grilled, lemon butter" />
         </Field>
-        <Field label="Price" hint="Leave blank for market price. R189, 189.50 and 189,50 all work.">
+        <Field label="Price" hint="Leave blank for market price, or when the dish is priced by size below. R189, 189.50 and 189,50 all work.">
           <Input value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="R89.00" inputMode="decimal" />
+        </Field>
+        <Field label="Sizes" as="div" hint="Optional. 300ml/500ml, half/full, glass/bottle -- up to four, shown on the menu in this order.">
+          <PriceRows
+            rows={form.variants}
+            onChange={(rows) => setRows('variants', rows)}
+            max={MAX_VARIANTS}
+            noun="size"
+            addLabel="Add size"
+            labelPlaceholder="500ml"
+            pricePlaceholder="R35.00"
+          />
+        </Field>
+        <Field label="Add-ons" as="div" hint="Optional. Extras a diner can ask for -- up to six, listed on the dish when it is opened. Price 0 shows as free.">
+          <PriceRows
+            rows={form.addOns}
+            onChange={(rows) => setRows('addOns', rows)}
+            max={MAX_ADD_ONS}
+            noun="add-on"
+            addLabel="Add add-on"
+            labelPlaceholder="Extra cheese"
+            pricePlaceholder="R10.00"
+          />
         </Field>
         <Field label="Promotion" hint="One label max -- shows as a pill next to the dish name on the menu.">
           <Select value={form.promoLabel} onValueChange={(promoLabel) => setForm({ ...form, promoLabel })}>

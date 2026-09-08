@@ -1,6 +1,12 @@
 // Prices are stored as integer cents and only ever become a decimal at the edge of the system --
 // here, and nowhere else. A menu that renders R188.99999 because someone did floating-point
 // arithmetic on a price is the kind of bug a restaurant photographs and sends you.
+//
+// ponytail: both functions below are ALSO injected into the diner page via `${fn.toString()}` for
+// the bill splitter (see dinerPage.js and lib/splitBill.js), so both must stay pure functions of
+// their own arguments -- no module-scope constants, no closures over anything in this file. That
+// is what keeps one implementation of "R189.00" and "is this a valid price" across the server and
+// a diner's phone. dinerPage.test.js asserts the injected source actually reaches the client.
 
 // Cents -> "R189.00". Null/undefined price means "no price shown" (a market-price dish, a
 // section header), which is a legitimate menu state and must not render as "R0.00".

@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { parseReceipt, settle } = require('./splitBill');
+const { parseReceipt, settle, binarize } = require('./splitBill');
 
 // A plausible South African till slip as Tesseract would hand it over: dot leaders, a mix of
 // comma and full-stop decimals, an O read for a 0, and a tail of totals that are not food.
@@ -179,4 +179,70 @@ test('parseReceipt and settle reference nothing outside their own arguments', ()
   // settle's cent-spreading helper has to travel with it rather than sit beside it in this file.
   assert.ok(/function spread\(/.test(settle.toString()), 'settle must declare spread() internally');
   assert.ok(/var PRICE =/.test(parseReceipt.toString()), 'parseReceipt must declare its regexes internally');
+});
+
+
+// --- binarize -----------------------------------------------------------------------------------
+
+// A photographed bill, as the camera actually delivers one: a small bright receipt on a dark
+// restaurant table, with print that is grey rather than black. 200x200 RGBA, same shape as
+// getImageData().data.
+function frame() {
+  const w = 200, h = 200;
+  const px = new Uint8ClampedArray(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const paper = x >= 60 && x < 140 && y >= 40 && y < 160;
+      // Six lines of print down the middle of the paper.
+      const print = paper && x >= 68 && x < 132 && y % 20 >= 6 && y % 20 < 10;
+      const g = print ? 105 : paper ? 205 : 45;   // print / paper / table
+      const p = (y * w + x) * 4;
+      px[p] = px[p + 1] = px[p + 2] = g;
+      px[p + 3] = 255;
+    }
+  }
+  return { px, w, h, at: (x, y) => px[(y * w + x) * 4] };
+}
+
+test('a global threshold loses the print on this frame -- which is why binarize is local', () => {
+  // The pass this replaced: one cut at 88% of the whole frame's mean. The table is most of the
+  // frame, so the mean lands near it, the cut lands below the print, and every stroke on the
+  // bill survives as white paper. Tesseract reads a blank page and the diner is told their
+  // photo was no good. This test exists to keep anyone from "simplifying" back to it.
+  const { px } = frame();
+  let sum = 0;
+  for (let i = 0; i < px.length; i += 4) sum += px[i];
+  const cut = (sum / (px.length / 4)) * 0.88;
+  assert.ok(105 > cut, `print at 105 must sit above the global cut (${cut.toFixed(1)}) to make the point`);
+});
+
+test('binarize keeps the print black and the paper white', () => {
+  const f = frame();
+  binarize(f.px, f.w, f.h);
+  // A print pixel, dead centre of the second line of text.
+  assert.strictEqual(f.at(100, 47), 0);
+  // Paper between two lines, and paper in the margin beside the text.
+  assert.strictEqual(f.at(100, 55), 255);
+  assert.strictEqual(f.at(63, 47), 255);
+  // Nothing but 0 and 255 comes out, and the alpha channel is left alone.
+  for (let i = 0; i < f.px.length; i += 4) {
+    assert.ok(f.px[i] === 0 || f.px[i] === 255);
+    assert.strictEqual(f.px[i + 3], 255);
+  }
+});
+
+test('binarize is O(n) enough for a phone-sized frame', () => {
+  // 1500x1125 is what prep() hands it after the downscale. The point is the integral image: the
+  // naive per-pixel window is ~90 million reads at this size and reads as a frozen phone.
+  const w = 1500, h = 1125;
+  const px = new Uint8ClampedArray(w * h * 4).fill(200);
+  const t = Date.now();
+  binarize(px, w, h);
+  assert.ok(Date.now() - t < 2000, 'binarize took ' + (Date.now() - t) + 'ms');
+});
+
+test('binarize references nothing outside its own arguments', () => {
+  const src = binarize.toString();
+  assert.ok(!/\brequire\s*\(/.test(src));
+  assert.ok(!/\bmodule\b|\bexports\b/.test(src));
 });

@@ -1,6 +1,6 @@
 const { formatCents, parsePrice } = require('./money');
 const { DAYS, status, CLOSING_SOON_MINS } = require('./hours');
-const { parseReceipt, settle } = require('./splitBill');
+const { parseReceipt, settle, binarize } = require('./splitBill');
 const { ALLERGEN_LABELS } = require('./dietary');
 const { PROMO_LABEL_TEXT } = require('./promotions');
 
@@ -1986,6 +1986,8 @@ ${
 
     ${settle.toString()}
 
+    ${binarize.toString()}
+
     ${parsePrice.toString()}
 
     ${formatCents.toString()}
@@ -2509,13 +2511,9 @@ ${
         });
       }
 
-      // Downscale, greyscale, then cut to black and white against the image's own mean brightness.
-      // This is the largest accuracy lever Tesseract has here: it expects black print on white
-      // paper, and what it gets is grey thermal print on cream card under tungsten light.
-      //
-      // ponytail: one global threshold for the whole frame. A bill photographed half in shadow
-      // loses the dark half -- go per-tile (adaptive) only if that turns out to be the common
-      // failure rather than a rare one.
+      // Downscale, then hand the frame to binarize() (lib/splitBill.js) -- the largest accuracy
+      // lever Tesseract has here. Everything about that pass is tested in Node; this function is
+      // only the parts that need a browser: decoding the file and getting at its pixels.
       function prep(file){
         return new Promise(function(resolve, reject){
           var img = new Image();
@@ -2530,19 +2528,7 @@ ${
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
             var data = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            var px = data.data, i, grey, sum = 0;
-            for(i = 0; i < px.length; i += 4){
-              grey = px[i] * 0.299 + px[i + 1] * 0.587 + px[i + 2] * 0.114;
-              px[i] = px[i + 1] = px[i + 2] = grey;
-              sum += grey;
-            }
-            // Cut below the mean, not at it: paper fills most of the frame so the mean sits well
-            // up in the whites, and cutting exactly there eats the thin strokes.
-            var cut = (sum / (px.length / 4)) * 0.88;
-            for(i = 0; i < px.length; i += 4){
-              grey = px[i] < cut ? 0 : 255;
-              px[i] = px[i + 1] = px[i + 2] = grey;
-            }
+            binarize(data.data, canvas.width, canvas.height);
             ctx.putImageData(data, 0, 0);
             resolve(canvas);
           };
@@ -2621,8 +2607,14 @@ ${
               setTimeout(function(){ showScan(false); go(1); done(); }, 420);
             });
           })
-          .catch(function(){
-            fail('Could not read that one. You can type the items in instead.');
+          .catch(function(e){
+            // loadOcr() already rejects with 'cdn' for a scanner that never arrived. Saying
+            // "could not read that one" there blames the diner's photo for a dead network and
+            // sends them off to retake it, which cannot work -- and it is the one failure a
+            // report of "the splitter is broken" most likely means.
+            fail(e && e.message === 'cdn'
+              ? 'Could not download the scanner. Check your signal, or type the items in.'
+              : 'Could not read that one. You can type the items in instead.');
           })
           .then(function(){
             scanning = false;

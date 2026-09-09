@@ -80,7 +80,8 @@ test('the bill splitter ships its maths to the client, not a second copy of it',
   // parseReceipt/settle (lib/splitBill.js) and parsePrice/formatCents (lib/money.js) are inlined
   // by toString(). Break their purity and the page still renders -- it just throws on a phone.
   // This is what catches that, the same way hours.test.js guards status().
-  for (const fn of ['function parseReceipt(', 'function settle(', 'function parsePrice(', 'function formatCents(']) {
+  for (const fn of ['function parseReceipt(', 'function settle(', 'function binarize(',
+    'function parsePrice(', 'function formatCents(']) {
     assert.ok(html.includes(fn), `${fn} must reach the client`);
   }
   // Nothing about the splitter may reach the network: no route, no upload, no retained image.

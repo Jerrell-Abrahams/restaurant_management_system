@@ -195,4 +195,56 @@ function settle(state) {
   };
 }
 
-module.exports = { parseReceipt, settle };
+// The photo -> black-and-white pass that runs before Tesseract sees the frame. Lives here, next to
+// the parsing, for the same reason the parsing does: it is client code whose only chance of being
+// tested is in Node.
+//
+// PURE FUNCTION -- see the file header. Do not reach outside these parameters.
+function binarize(px, w, h) {
+  var i, x, y, g;
+  // Tesseract expects black print on white paper. What it gets is grey thermal print on cream
+  // card under tungsten light, so the colour goes first and the decision is made on brightness.
+  for (i = 0; i < px.length; i += 4) {
+    g = (px[i] * 0.299 + px[i + 1] * 0.587 + px[i + 2] * 0.114) | 0;
+    px[i] = px[i + 1] = px[i + 2] = g;
+  }
+
+  // Bradley-Roth: every pixel is cut against the mean of the window AROUND it, never against one
+  // number for the whole frame. A global mean is what a photo of a bill actually defeats -- a
+  // receipt is a small bright object on a dark restaurant table, so the table drags the mean far
+  // below the paper, the print sits above the cut, and the whole page comes out white. Tesseract
+  // then reads nothing and the diner is told their photo was no good.
+  //
+  // The integral image is what keeps that per-pixel window O(1) instead of O(window), which is
+  // the difference between this pass and a phone that appears to have frozen.
+  var W = w + 1;
+  var sum = new Uint32Array(W * (h + 1));
+  for (y = 0; y < h; y++) {
+    var run = 0;
+    for (x = 0; x < w; x++) {
+      run += px[(y * w + x) * 4];
+      sum[(y + 1) * W + x + 1] = sum[y * W + x + 1] + run;
+    }
+  }
+
+  // A sixteenth of the width: wide enough to hold a run of paper around any glyph on a bill
+  // photographed to fill the frame, narrow enough that the table on one side of it cannot reach
+  // the print on the other.
+  var s = Math.max(8, w >> 4), half = s >> 1;
+  for (y = 0; y < h; y++) {
+    var y0 = y - half < 0 ? 0 : y - half, y1 = y + half > h - 1 ? h - 1 : y + half;
+    for (x = 0; x < w; x++) {
+      var x0 = x - half < 0 ? 0 : x - half, x1 = x + half > w - 1 ? w - 1 : x + half;
+      var area = (x1 - x0 + 1) * (y1 - y0 + 1);
+      var tot = sum[(y1 + 1) * W + x1 + 1] - sum[y0 * W + x1 + 1]
+              - sum[(y1 + 1) * W + x0] + sum[y0 * W + x0];
+      var p = (y * w + x) * 4;
+      // 88% of the local mean rather than the mean itself: paper fills most of any window, so the
+      // mean sits up in the whites and cutting exactly there eats the thin strokes.
+      g = px[p];
+      px[p] = px[p + 1] = px[p + 2] = g * area * 100 < tot * 88 ? 0 : 255;
+    }
+  }
+}
+
+module.exports = { parseReceipt, settle, binarize };

@@ -96,7 +96,9 @@ const STYLE = `
   --cta-arrow:#c9a25c;
 }
 *{box-sizing:border-box}
-html{scroll-behavior:smooth}
+/* Thin overlay-ish bar instead of the OS default chrome -- only ever visible on desktop and
+   in the owner's Settings preview frame, where the fat native bar sat inside the phone. */
+html{scroll-behavior:smooth;scrollbar-width:thin;scrollbar-color:var(--unlit) transparent}
 [hidden]{display:none}
 body{margin:0;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;
   font-family:var(--sans);font-weight:300;padding-bottom:112px}

@@ -66,6 +66,16 @@ test('no incentive language anywhere', () => {
   }
 });
 
+test('the inline script parses', () => {
+  // The whole page is built by string concatenation, and half the client script arrives through
+  // fn.toString(). A syntax error there renders a page that looks perfect and in which nothing
+  // works -- no theme toggle, no accordion, no splitter -- and every other test in this file
+  // greps the HTML as text, so not one of them would notice.
+  const src = [...html.matchAll(/<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+  assert.ok(src.length >= 2);
+  for (const s of src) new (require('node:vm').Script)(s);
+});
+
 test('the bill splitter ships its maths to the client, not a second copy of it', () => {
   // parseReceipt/settle (lib/splitBill.js) and parsePrice/formatCents (lib/money.js) are inlined
   // by toString(). Break their purity and the page still renders -- it just throws on a phone.
@@ -97,6 +107,10 @@ test('a split interrupted by a reload reopens itself', () => {
   // start pane, so an interrupted scan is always interrupted at step 0.
   assert.ok(html.includes('if(S.open) openBtn.onclick();'));
   assert.ok(!/S\.step > 0/.test(html));
+  // And the flag is derived from the DOM, never set by a close handler: the back gesture hides
+  // overlays directly, so a hand-maintained flag stays true and the splitter reopens over the
+  // menu -- covering the header and the theme toggle -- on every load.
+  assert.ok(html.includes('S.open = !splitEl.hidden;'));
   // And the picked file must outlive the input it came from: clearing the input before prep()
   // reads it invalidates the File on iOS, which surfaces as "could not read that one".
   assert.ok(html.indexOf("photo.value = ''") > html.indexOf('w.recognize(canvas)'));

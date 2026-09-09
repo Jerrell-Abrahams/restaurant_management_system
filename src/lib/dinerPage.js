@@ -2297,16 +2297,20 @@ ${
     openBtn.onclick = function(){
       sheet.hidden = true;
       splitEl.hidden = false;
-      S.open = true;
       totalEl.value = S.billTotalCents === null || S.billTotalCents === undefined ? '' : rands(S.billTotalCents);
       tipAmtEl.value = S.tip.mode === 'amount' ? rands(S.tip.value) : '';
       go(S.items.length ? (S.step || 0) : 0);
     };
-    document.getElementById('close-split').onclick = function(){
-      splitEl.hidden = true;
-      S.open = false;
+    document.getElementById('close-split').onclick = function(){ splitEl.hidden = true; };
+
+    // S.open follows the DOM instead of being set by each close path, because the close button is
+    // not one of them: the back gesture hides every overlay directly (see the popstate handler
+    // above), so a flag maintained by the ✕ handler alone stays true forever and reopens the
+    // splitter over the whole menu -- header, theme toggle and all -- on every load after it.
+    new MutationObserver(function(){
+      S.open = !splitEl.hidden;
       save();
-    };
+    }).observe(splitEl, { attributes: true, attributeFilter: ['hidden'] });
 
     // Reopen a split that a reload interrupted. Opening the camera on a page holding Tesseract's
     // wasm is exactly when a phone discards the tab, so the diner comes back to a fresh document
@@ -2399,8 +2403,9 @@ ${
 
     document.getElementById('sp-reset').onclick = function(){
       S = fresh();
-      // fresh() itself has no open flag -- it is also what load() falls back to, and a first-time
-      // visitor must not have the splitter open itself over the menu.
+      // fresh() carries no open flag -- it is also what load() falls back to, and a first-time
+      // visitor must not have the splitter open itself over the menu. Start over does not change
+      // splitEl.hidden, so the observer below leaves the flag where it already is: open.
       S.open = true;
       totalEl.value = '';
       tipAmtEl.value = '';

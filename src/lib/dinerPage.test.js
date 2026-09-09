@@ -132,6 +132,10 @@ test('a split interrupted by a reload reopens itself', () => {
   assert.ok(html.includes('S.open = !splitEl.hidden;'));
   // And the picked file must outlive the input it came from: clearing the input before prep()
   // reads it invalidates the File on iOS, which surfaces as "could not read that one".
+  // Both needles asserted present first: a renamed recognise call indexOf's to -1, and every
+  // real position is > -1, so the ordering below would hold for a page with no scan in it.
+  assert.ok(html.includes("photo.value = ''"));
+  assert.ok(html.includes('w.recognize(canvas)'));
   assert.ok(html.indexOf("photo.value = ''") > html.indexOf('w.recognize(canvas)'));
 });
 

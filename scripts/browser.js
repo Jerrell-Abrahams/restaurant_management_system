@@ -145,6 +145,30 @@ const LAYOUTS = {
   await sleep(2500);
   check('a reload at the table does not', beacons.length === 0, `${beacons.length} beacon(s)`);
 
+  console.log('\n== nothing flashes under a finger ==');
+  // -webkit-tap-highlight-color inherits, so one declaration on html covers the page. It was
+  // once declared per element instead, which covered whatever existed the day it was written --
+  // by the time anyone looked, 36 controls including the entire splitter were flashing grey-blue.
+  // Counting live elements rather than grepping for the declaration is the point: a new control
+  // added under a container that somehow resets it would still be caught.
+  const tap = JSON.parse(await s.evaluate(`(() => {
+    const sel = 'a,button,summary,input,select,textarea,label,[role="button"],[tabindex],details';
+    document.querySelectorAll('details').forEach(d => d.open = true);
+    const b = document.getElementById('open-split'); if (b) b.click();
+    const bad = [];
+    for (const el of document.querySelectorAll(sel)) {
+      const t = getComputedStyle(el).webkitTapHighlightColor;
+      if (!/^rgba?\\((0, ?){3}0\\)$/.test(t) && t !== 'transparent') {
+        bad.push(el.tagName + (el.id ? '#' + el.id : ''));
+      }
+    }
+    return JSON.stringify({ total: document.querySelectorAll(sel).length, bad: bad.slice(0, 6), count: bad.length });
+  })()`));
+  check('every interactive element suppresses the native tap flash', tap.count === 0,
+    `${tap.total} checked${tap.count ? ', flashing: ' + tap.bad.join(', ') : ''}`);
+  await s.send('Page.navigate', { url: PAGE });
+  await sleep(1500);
+
   console.log('\n== prep() releases the decoded frame ==');
   const rel = JSON.parse(await s.evaluate(`new Promise((done) => {
     const img = new Image();

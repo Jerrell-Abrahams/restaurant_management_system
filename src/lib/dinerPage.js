@@ -98,7 +98,12 @@ const STYLE = `
 *{box-sizing:border-box}
 /* Thin overlay-ish bar instead of the OS default chrome -- only ever visible on desktop and
    in the owner's Settings preview frame, where the fat native bar sat inside the phone. */
-html{scroll-behavior:smooth;scrollbar-width:thin;scrollbar-color:var(--unlit) transparent}
+/* Tap flash off once, here. The property inherits, so this covers every control on the page,
+   including the ones nobody has written yet. Declared per element it covered only what existed
+   the day it was written: the whole splitter, the map link and the info close button were all
+   still flashing grey-blue under a finger. */
+html{scroll-behavior:smooth;scrollbar-width:thin;scrollbar-color:var(--unlit) transparent;
+  -webkit-tap-highlight-color:transparent}
 [hidden]{display:none}
 body{margin:0;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;
   font-family:var(--sans);font-weight:300;padding-bottom:112px}
@@ -131,10 +136,10 @@ h1{margin:0;font-family:var(--serif);font-size:24.5px;font-weight:500;line-heigh
 /* 44px tap floor, same as every other control on this page -- these get hit one-handed too. */
 .burger{flex:0 0 auto;width:44px;height:44px;border-radius:7px;border:0;
   background:none;color:var(--muted);font-size:20px;line-height:1;cursor:pointer;
-  -webkit-tap-highlight-color:transparent}
+}
 .theme-toggle{flex:0 0 auto;width:44px;height:44px;display:flex;align-items:center;
   justify-content:center;border-radius:7px;border:0;background:none;color:var(--muted);
-  cursor:pointer;-webkit-tap-highlight-color:transparent}
+  cursor:pointer}
 .sub{margin:2px 0 0;font-size:10px;letter-spacing:.34em;text-transform:uppercase;
   color:var(--accent)}
 /* Hidden by default and only ever un-hidden client-side, in the inline script below -- the page
@@ -156,7 +161,6 @@ h1{margin:0;font-family:var(--serif);font-size:24.5px;font-weight:500;line-heigh
 .chip{flex:0 0 auto;height:44px;padding:0 13px;border-radius:999px;border:1px solid var(--border);
   background:var(--raised);color:var(--muted);font:inherit;font-size:9.5px;letter-spacing:.18em;
   text-transform:uppercase;white-space:nowrap;cursor:pointer;
-  -webkit-tap-highlight-color:transparent;
   transition:color .18s var(--ease),background .18s var(--ease),border-color .18s var(--ease),
     transform .14s var(--ease)}
 .chip:active{transform:scale(.94)}
@@ -183,7 +187,7 @@ h1{margin:0;font-family:var(--serif);font-size:24.5px;font-weight:500;line-heigh
 .search::-webkit-search-cancel-button{display:none}
 .search-x{position:absolute;right:2px;top:0;width:36px;height:44px;border:0;background:none;
   color:var(--dim);font-size:13px;line-height:1;cursor:pointer;
-  -webkit-tap-highlight-color:transparent}
+}
 .cat{margin:0;padding:26px 18px 12px;display:flex;align-items:center;gap:14px;
   font-size:10px;font-weight:400;letter-spacing:.38em;text-transform:uppercase;color:var(--dim)}
 .cat::after{content:"";flex:1;height:1px;background:var(--hair)}
@@ -290,7 +294,7 @@ h1{margin:0;font-family:var(--serif);font-size:24.5px;font-weight:500;line-heigh
 .faces{display:flex;gap:6px;margin-top:12px}
 .face{width:46px;height:46px;border-radius:7px;display:flex;align-items:center;
   justify-content:center;font-size:24px;line-height:1;border:0;padding:0;background:none;
-  color:var(--unlit);cursor:pointer;-webkit-tap-highlight-color:transparent;
+  color:var(--unlit);cursor:pointer;
   transition:color .18s var(--ease),background .18s var(--ease),transform .14s var(--ease)}
 .face:active{transform:scale(.92)}
 .face[aria-pressed="true"]{color:var(--lit);background:var(--lit-bg)}
@@ -303,7 +307,7 @@ h1{margin:0;font-family:var(--serif);font-size:24.5px;font-weight:500;line-heigh
 .confirm-btn{width:100%;margin-top:14px;height:44px;border-radius:999px;
   border:1px solid var(--cta-border);background:var(--cta-bg);color:var(--cta-ink);font:inherit;
   font-size:11px;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;
-  -webkit-tap-highlight-color:transparent}
+}
 .confirm-btn.sent{background:var(--lit-bg);color:var(--lit);border-color:var(--card-open-border)}
 footer{position:fixed;left:0;right:0;bottom:0;z-index:7;padding:16px 18px 26px;
   background:var(--fade);pointer-events:none}
@@ -320,7 +324,7 @@ footer{position:fixed;left:0;right:0;bottom:0;z-index:7;padding:16px 18px 26px;
   gap:5px;height:60px;border-radius:11px;border:1px solid var(--cta-border);
   background:var(--cta-bg);color:var(--cta-ink);font:inherit;font-size:9.5px;
   letter-spacing:.1em;text-transform:uppercase;cursor:pointer;
-  -webkit-tap-highlight-color:transparent}
+}
 .cta-btn svg{color:var(--cta-arrow)}
 .cta-star{font-size:15px;line-height:1;color:var(--cta-arrow)}
 /* Covers both the footer pill and the sheet row below -- one request can be triggered from
@@ -371,7 +375,7 @@ textarea.field{resize:vertical;min-height:96px;font-family:inherit}
 .sheet-divider{height:1px;margin:0 16px 0 65px;background:var(--hair)}
 .sheet-row{width:100%;border:0;background:none;display:flex;align-items:center;gap:13px;
   padding:14px;font:inherit;color:var(--text);text-align:left;cursor:pointer;
-  -webkit-tap-highlight-color:transparent;transition:background .15s var(--ease)}
+  transition:background .15s var(--ease)}
 .sheet-row:active{background:var(--panel)}
 .sheet-row-icon{flex:none;width:36px;height:36px;border-radius:10px;display:flex;
   align-items:center;justify-content:center;background:var(--panel);color:var(--dim)}
@@ -428,7 +432,7 @@ textarea.field{resize:vertical;min-height:96px;font-family:inherit}
 .sp-row .sp-price{width:82px;text-align:right;font-variant-numeric:tabular-nums}
 .sp-del{flex:none;width:28px;height:28px;border:0;border-radius:7px;background:none;
   color:var(--dim);font:inherit;font-size:15px;line-height:1;cursor:pointer;
-  -webkit-tap-highlight-color:transparent}
+}
 .sp-del:active{background:var(--panel)}
 .sp-add{width:100%;margin-top:10px;padding:12px;border:1px dashed var(--border-strong);
   border-radius:10px;background:none;color:var(--dim);font:inherit;font-size:12.5px;cursor:pointer}
@@ -440,7 +444,7 @@ textarea.field{resize:vertical;min-height:96px;font-family:inherit}
 .sp-stepper .sp-label{flex:1;margin:0}
 .sp-step-btn{width:38px;height:38px;border-radius:50%;border:1px solid var(--border-strong);
   background:var(--raised);color:var(--text);font:inherit;font-size:18px;line-height:1;
-  cursor:pointer;-webkit-tap-highlight-color:transparent}
+  cursor:pointer}
 .sp-step-btn[disabled]{opacity:.35;cursor:default}
 .sp-count{min-width:24px;text-align:center;font-size:19px;color:var(--heading);
   font-variant-numeric:tabular-nums}
@@ -460,7 +464,6 @@ textarea.field{resize:vertical;min-height:96px;font-family:inherit}
 .sp-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
 .sp-chip{padding:7px 13px;border-radius:999px;border:1px solid var(--border);
   background:var(--raised);color:var(--muted);font:inherit;font-size:12px;cursor:pointer;
-  -webkit-tap-highlight-color:transparent;
   transition:background .16s var(--ease),color .16s var(--ease),border-color .16s var(--ease)}
 .sp-chip[aria-pressed="true"]{background:var(--lit-bg);color:var(--lit);border-color:var(--lit)}
 
@@ -656,7 +659,7 @@ section[hidden]{display:none;opacity:0}
 /* Touch feedback. */
 .search,.note,.field{transition:border-color .2s var(--ease),box-shadow .2s var(--ease)}
 .search:focus,.note:focus,.field:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--lit-bg)}
-.row{-webkit-tap-highlight-color:transparent;transition:background .18s var(--ease)}
+.row{transition:background .18s var(--ease)}
 .item:not([open]) .row:active{background:var(--panel)}
 .cta-btn,.btn,.confirm-btn{transition:transform .16s var(--ease),opacity .2s var(--ease),
   background .2s var(--ease),border-color .2s var(--ease),color .2s var(--ease)}

@@ -1364,12 +1364,17 @@ ${
     });
   }
 
-  // Counts this load as a scan. Fired unconditionally, cache hit or not -- the HTML itself sits
-  // behind a 60s shared cache (routes/public.js), so counting server-side in that route would
-  // undercount almost every real scan. sendBeacon survives the diner tapping away immediately
-  // after landing; post() is the fallback for the one browser without it.
-  if(navigator.sendBeacon) navigator.sendBeacon('/api/public/' + encodeURIComponent(slug) + '/scan');
-  else post('/scan', {});`
+  // Counts this load as a scan. Counted here, not in the route: the HTML sits behind a 60s
+  // shared cache (routes/public.js), so a server-side count would miss almost every real scan.
+  // sendBeacon survives the diner tapping away immediately; post() covers the one browser
+  // without it. Fresh navigations only -- a refresh is the same diner at the same table, and
+  // "Scans today" is read by an owner as arrivals, not page loads. A real re-scan is still a
+  // 'navigate' even when the camera reuses the tab, so it still counts.
+  var nav = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
+  if(!nav || nav.type === 'navigate'){
+    if(navigator.sendBeacon) navigator.sendBeacon('/api/public/' + encodeURIComponent(slug) + '/scan');
+    else post('/scan', {});
+  }`
 }
 
   // Restarts a one-shot keyframe class. Removing and re-adding is not enough on its own -- the

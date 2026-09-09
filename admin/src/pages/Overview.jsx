@@ -111,7 +111,10 @@ export function Overview() {
       ) : (
         <div className="flex flex-col gap-6">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-            <Stat label="Scans today" value={summary.scansToday} sub={`${summary.totalScans} total`} />
+            {/* "in 30 days", not "total": cron.js purges qr_scans past 30 days, so this count
+                stops climbing once a restaurant is a month old and then tracks a rolling window
+                that can fall. Analytics already labels the same number "Scans, last 30 days". */}
+            <Stat label="Scans today" value={summary.scansToday} sub={`${summary.totalScans} in 30 days`} />
             <Stat label="Ratings today" value={summary.todayCount} />
             <Stat label="Average visit" value={summary.average} tone="ok" />
             <Stat label="Needs attention" value={summary.openIssues} tone={summary.openIssues > 0 ? 'bad' : undefined} />

@@ -146,9 +146,10 @@ router.get('/:slug', async (req, res) => {
 
 // --- QR scans ------------------------------------------------------------------------------
 
-// Fired by a client-side beacon on every page load (see dinerPage.js), not counted above -- the
-// menu route is cached 60s at a shared edge, so most real scans never reach this process if the
-// counting happened there instead. No dedup: a diner reloading mid-visit is another real scan.
+// Fired by a client-side beacon on each fresh navigation to the menu (see dinerPage.js), not
+// counted above -- the menu route is cached 60s at a shared edge, so most real scans never reach
+// this process if the counting happened there instead. The beacon skips reloads, so a diner
+// refreshing mid-visit is not a second scan; see qr_scans.sql.
 router.post('/api/public/:slug/scan', async (req, res) => {
   const ctx = await bySlug(req.params.slug);
   if (!ctx) return res.status(404).json({ error: 'Not found' });

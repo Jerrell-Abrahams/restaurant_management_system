@@ -503,11 +503,14 @@ test("lib/hours.js's status() reaches the client verbatim", () => {
 
 // --- QR scans -----------------------------------------------------------------------------
 // The menu route is cached 60s at a shared edge (routes/public.js), so a scan can only be counted
-// from the browser -- this pins that the beacon actually ships, unconditionally, with a fallback
-// for the one browser without sendBeacon.
+// from the browser -- this pins that the beacon actually ships, with a fallback for the one
+// browser without sendBeacon, and that it is gated on the navigation type so a refresh at the
+// table does not read as a second arrival.
 test('every render fires a scan beacon at the uncached /scan endpoint, with a post() fallback', () => {
   assert.ok(html.includes("navigator.sendBeacon('/api/public/' + encodeURIComponent(slug) + '/scan')"));
   assert.ok(html.includes("else post('/scan', {})"));
+  assert.ok(html.includes("performance.getEntriesByType('navigation')[0]"));
+  assert.ok(html.includes("if(!nav || nav.type === 'navigate')"), 'reloads must not count as scans');
 });
 
 test('the info-modal badge exists hidden by default -- only client JS un-hides it', () => {

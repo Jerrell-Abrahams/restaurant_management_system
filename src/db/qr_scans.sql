@@ -7,8 +7,12 @@
 -- route handler would undercount almost every real scan; the beacon runs in the browser
 -- regardless of whether the HTML it's attached to was a cache hit.
 --
--- No dedup: every page load is its own row, including a diner reloading mid-visit. "How many
--- times the QR code was scanned" is the literal question this answers.
+-- Fresh navigations only. The beacon skips reloads and back/forward restores (it reads
+-- PerformanceNavigationTiming.type), so a diner refreshing mid-meal is not a second row -- the
+-- admin reads this as "how many people arrived", not "how many page loads". A genuine re-scan
+-- still counts: the camera opening the URL is a fresh navigation even when it reuses the tab.
+-- No other dedup -- ip_hash is useless for it behind restaurant NAT, where every table shares
+-- one IP.
 
 create table if not exists restaurant.qr_scans (
   id uuid primary key default gen_random_uuid(),

@@ -77,6 +77,31 @@ test('the bill splitter ships its maths to the client, not a second copy of it',
   assert.ok(!/\/api\/public\/[^']*\/split/.test(html));
 });
 
+test('the scanner reports the real pass, not a scripted one', () => {
+  // Design canvas: Split the Bill Scan.dc.html. The canvas fakes its progress off a timer; the
+  // page may not -- the percentage has to come from Tesseract's own logger, or the bar is a
+  // decoration that says "working" while nothing is.
+  assert.ok(html.includes("progress('READING LINE ITEMS', 20 + m.progress * 70)"));
+  assert.ok(html.includes('id="sp-scan"'));
+
+  // And it must stay out of the wizard: in PANES, go(step) could restore a reload straight onto a
+  // progress bar for a scan that died with the last document.
+  assert.ok(!/PANES = \[[^\]]*sp-scan/.test(html));
+});
+
+test('a split interrupted by a reload reopens itself', () => {
+  // The phone discards the tab while the camera is open -- commonly on the second scan, with
+  // Tesseract's wasm already resident -- and the diner lands back on the menu. The saved split is
+  // only useful if the page reopens the overlay, so the restore has to survive refactors here.
+  // On the overlay's own open flag, never on the wizard step: the camera button lives on the
+  // start pane, so an interrupted scan is always interrupted at step 0.
+  assert.ok(html.includes('if(S.open) openBtn.onclick();'));
+  assert.ok(!/S\.step > 0/.test(html));
+  // And the picked file must outlive the input it came from: clearing the input before prep()
+  // reads it invalidates the File on iOS, which surfaces as "could not read that one".
+  assert.ok(html.indexOf("photo.value = ''") > html.indexOf('w.recognize(canvas)'));
+});
+
 test('the splitter is offered even where table service is switched off', () => {
   // It is a calculator on the diner's own phone, so it has nothing to do with serviceEnabled --
   // gate the whole sheet group again and it silently vanishes for most restaurants.
@@ -111,9 +136,28 @@ test('a brand hue moves the accent family in both palettes, and nothing else', (
   assert.ok(themed.includes('--accent:hsl(200,50%,57%)'));
   assert.ok(themed.includes('--lit:hsl(200,52%,47%)'));
   assert.ok(themed.includes('--card-open-border:hsla(200,52%,39%,.35)'));
+  // The --cta-* group too, or the loudest colour on the page -- the promo badges and the three
+  // footer buttons -- stays brass while everything around it turns the owner's colour, which is
+  // what "I set my brand colour and the buttons ignored it" looks like.
+  assert.ok(themed.includes('--cta-bg:hsl(200,42%,12%)'));
+  assert.ok(themed.includes('--cta-arrow:hsl(200,60%,66%)'));
+  assert.ok(themed.includes('--cta-bg:hsla(200,50%,57%,.09)'));
+  assert.ok(themed.includes('--cta-ink:hsl(200,60%,66%)'));
   // The ink-tinted hairlines are deliberately NOT branded. If --border ever shows up in the theme
   // block, the menu's structure has started wearing the brand colour.
   assert.ok(!/--border(-strong)?:hsl/.test(themed));
+});
+
+test('the themed stops keep the default lightness, which is what carries contrast', () => {
+  // The whole reason the slider can be a free 0-360 picker is that no lightness is a variable.
+  // At hue 38 the ink and arrow stops ARE the brass the page ships (#faf7f1, #dcb974); --cta-bg
+  // is deliberately more saturated than #1d1a16's 14%, because a 14% tint on a near-black is a
+  // brand colour nobody can see -- but it holds the same near-black lightness, so the cream ink
+  // on it stays as readable as it was.
+  const themed = renderPage({ restaurant: { ...restaurant, brand_hue: 38 }, menu });
+  assert.ok(themed.includes('--cta-ink:hsl(38,47%,96%)')); // #faf7f1
+  assert.ok(themed.includes('--cta-arrow:hsl(38,60%,66%)')); // #dcb974
+  assert.match(themed, /--cta-bg:hsl\(38,\d+%,1[012]%\)/);
 });
 
 test('a junk hue is ignored rather than injected into the stylesheet', () => {

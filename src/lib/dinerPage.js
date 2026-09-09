@@ -345,7 +345,7 @@ textarea.field{resize:vertical;min-height:96px;font-family:inherit}
 .btn-ghost{background:none;border-color:var(--border);color:var(--dim)}
 .btn-quiet{display:inline-block;margin-top:18px;font-size:11px;letter-spacing:.2em;
   text-transform:uppercase;color:var(--muted);text-decoration:underline;text-underline-offset:4px}
-.close{position:absolute;top:18px;right:18px;width:38px;height:38px;border-radius:50%;
+.close{position:absolute;top:18px;right:18px;z-index:4;width:38px;height:38px;border-radius:50%;
   border:1px solid var(--border);background:none;color:var(--dim);font:inherit;font-size:15px;
   cursor:pointer}
 .empty{padding:36px 18px;color:var(--dim);font-size:14px}
@@ -490,6 +490,88 @@ textarea.field{resize:vertical;min-height:96px;font-family:inherit}
 .sp-nav-btn[disabled]{opacity:.4;cursor:not-allowed}
 button.btn-quiet{width:100%;border:0;background:none;font:inherit;font-size:11px;
   letter-spacing:.2em;text-transform:uppercase;cursor:pointer}
+
+/* --- The scanner (design canvas: Split the Bill Scan.dc.html) --------------------------------
+   What used to be one line of text while Tesseract worked. A camera has just fired and the diner
+   cannot tell whether anything is happening; this is the screen that says it is, and every number
+   on it is real -- the phase is the stage the pipeline is in, the percentage is Tesseract's own
+   progress, the count at the end is what parseReceipt() came back with.
+
+   Nothing is copied from the canvas as a hex: it is light-only (terracotta on cream) and this page
+   has a dark theme, so the beam, brackets and blinker all ride --lit, the same "lit up" accent the
+   chips and hours badge already use. Lora and Inter are --serif and --sans; JetBrains Mono becomes
+   the system mono stack, since one pane of telemetry does not justify a third webfont on
+   restaurant wifi. Keyframes live here, not in the Motion section: seven names that mean nothing
+   outside this pane, and a scanner is easier to delete whole. */
+.sp-scan{position:fixed;inset:0;z-index:2;background:var(--bg);overflow:hidden;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.sp-scan-grid{position:absolute;inset:0;background-size:26px 26px;
+  background-image:linear-gradient(var(--hair) 1px,transparent 1px),
+    linear-gradient(90deg,var(--hair) 1px,transparent 1px);
+  animation:gridpan 2.6s linear infinite}
+.sp-scan-top{position:absolute;top:26px;left:26px;right:26px;display:flex;align-items:center;
+  justify-content:space-between;font-size:10px;letter-spacing:.14em;color:var(--muted)}
+.sp-live{display:flex;align-items:center;gap:6px}
+.sp-live i{width:5px;height:5px;border-radius:50%;background:var(--lit);
+  animation:blink 1s steps(1,end) infinite}
+/* max-* caps the frame on a phone shorter than the 844px canvas, where 88 + 400 would otherwise
+   run under the progress bar. */
+.sp-frame{position:absolute;top:88px;left:50%;transform:translateX(-50%);width:250px;height:400px;
+  max-width:calc(100% - 52px);max-height:calc(100% - 220px)}
+.sp-receipt{position:absolute;inset:0;padding:22px 20px;border-radius:6px;overflow:hidden;
+  background:var(--raised);border:1px solid var(--border)}
+/* Every bar on the paper is the same shimmering placeholder, as one selector rather than a class
+   on fourteen elements -- markup is what this page pays for on every load. */
+.sp-receipt i,.sp-receipt b{display:block;border-radius:5px;background-size:220% 100%;
+  background-image:linear-gradient(90deg,var(--unlit) 0,var(--panel) 40%,var(--unlit) 80%);
+  animation:shimmer 1.3s linear infinite}
+.sp-sk-h{height:13px;width:118px;margin-bottom:8px}
+.sp-sk-s{height:7px;width:72px;margin-bottom:18px}
+.sp-sk-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0;
+  border-bottom:1px dashed var(--border)}
+.sp-sk-row i,.sp-sk-row b{height:9px;opacity:.4;transition:opacity .4s var(--ease)}
+/* Ragged line lengths, two rules rather than six: it needs to read as text, not as a table. */
+.sp-sk-row i{width:86%}
+.sp-sk-row:nth-child(even) i{width:64%}
+.sp-sk-row b{width:34px;flex:none}
+.sp-sk-row.on i,.sp-sk-row.on b{opacity:.95}
+.sp-beam{position:absolute;left:0;right:0;height:56px;pointer-events:none;opacity:.8;
+  background:linear-gradient(to bottom,transparent,var(--lit-bg) 55%,var(--lit) 82%,transparent 84%);
+  box-shadow:0 0 26px var(--lit-bg);animation:beam 1.7s cubic-bezier(.45,0,.55,1) infinite}
+.sp-br{position:absolute;width:30px;height:30px;border:2px solid var(--lit);
+  animation:bracket 1.5s ease-in-out infinite}
+.sp-br:nth-of-type(1){top:-9px;left:-9px;border-right:0;border-bottom:0}
+.sp-br:nth-of-type(2){top:-9px;right:-9px;border-left:0;border-bottom:0;animation-delay:.2s}
+.sp-br:nth-of-type(3){bottom:-9px;left:-9px;border-right:0;border-top:0;animation-delay:.4s}
+.sp-br:nth-of-type(4){bottom:-9px;right:-9px;border-left:0;border-top:0;animation-delay:.6s}
+.sp-motes{position:absolute;inset:0;pointer-events:none}
+.sp-mote{position:absolute;font-size:9px;letter-spacing:.08em;color:var(--lit);
+  animation:floatup 1.6s ease-out forwards}
+.sp-scan-foot{position:absolute;left:26px;right:26px;bottom:44px}
+.sp-scan-phase{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;
+  font-size:11px;letter-spacing:.16em;color:var(--heading)}
+.sp-scan-phase span+span{color:var(--muted);letter-spacing:0;font-variant-numeric:tabular-nums}
+.sp-bar{height:2px;border-radius:2px;background:var(--unlit);overflow:hidden}
+.sp-bar i{display:block;height:100%;width:0;background:var(--lit);transition:width .2s linear}
+.sp-tele{margin-top:12px;font-size:9px;letter-spacing:.1em;color:var(--dim)}
+/* The shutter. --raised over --bg is a paper-white blink in light and almost nothing in dark,
+   which is the right amount of flash to fire at a table at night. */
+.sp-flash{position:fixed;inset:0;z-index:3;background:var(--raised);pointer-events:none;
+  animation:flash .4s ease-out forwards}
+@keyframes beam{0%{top:-6%}100%{top:104%}}
+@keyframes flash{0%{opacity:0}12%{opacity:.95}100%{opacity:0}}
+@keyframes bracket{0%,100%{opacity:.35}50%{opacity:1}}
+@keyframes floatup{0%{opacity:0;transform:translateY(8px)}30%{opacity:.9}
+  100%{opacity:0;transform:translateY(-26px)}}
+@keyframes gridpan{to{background-position:0 26px}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.15}}
+@keyframes shimmer{0%{background-position:120% 0}100%{background-position:-120% 0}}
+/* Easily the busiest thing on this page. Under reduce it is the phase and the progress bar, which
+   was the whole message anyway. */
+@media (prefers-reduced-motion:reduce){
+  .sp-scan-grid,.sp-beam{display:none}
+  .sp-receipt i,.sp-receipt b,.sp-br,.sp-live i,.sp-flash{animation:none}
+}
 
 /* --- Motion ------------------------------------------------------------------------------
    All of it is CSS. An animation library would be a blocking script in front of a menu someone
@@ -820,16 +902,18 @@ function renderHoursTable(hours) {
   ).join('');
 }
 
-// The brand hue moves four vars and only four: --accent (price, word-marks, spice, map link),
-// --lit (open badge, active chip, dietary/promo pills), its --lit-bg fill, and
-// --card-open-border. Everything else -- the ink-tinted hairlines especially -- stays neutral,
-// because brand-coloured structure is what makes a themed page read as a template.
+// The brand hue moves the whole accent family: --accent (price, word-marks, spice, map link),
+// --lit (open badge, active chip, dietary pills), its --lit-bg fill, --card-open-border and the
+// opened card's tint, and the --cta-* group -- the promo badges and the three footer buttons,
+// which are the same four tokens. Everything else -- the ink-tinted hairlines especially -- stays
+// neutral, because brand-coloured STRUCTURE is what makes a themed page read as a template. A
+// brand-coloured call-to-action is just a call-to-action.
 //
-// Only the HUE moves. Every saturation/lightness stop below is the one the default brass palette
-// already sits on (it is hsl(38, ...) throughout), so the AAA ratios the STYLE block's comments
-// were measured against hold for any hue an owner can pick -- contrast is a function of lightness,
-// and no lightness here is a variable. That is the whole reason this can be a free colour picker
-// rather than a fixed preset list.
+// No LIGHTNESS moves. Every lightness stop below is the one the default brass palette already
+// sits on, so the AAA ratios the STYLE block's comments were measured against hold for any hue an
+// owner can pick -- contrast is a function of lightness, and no lightness here is a variable.
+// That is the whole reason this can be a free colour picker rather than a fixed preset list.
+// (Saturation is fixed too, bar the one exception noted on --cta-bg below.)
 //
 // Null hue appends nothing at all: an unthemed restaurant renders the exact bytes it rendered
 // before this existed.
@@ -839,8 +923,26 @@ function themeCss(hue) {
   if (typeof hue !== 'number' || !Number.isFinite(hue)) return '';
   const h = Math.round(hue);
   if (h < 0 || h > 360) return '';
-  const light = `--accent:hsl(${h},57%,35%);--lit:hsl(${h},52%,47%);--lit-bg:hsla(${h},52%,47%,.1);--card-open-border:hsla(${h},52%,39%,.35)`;
-  const dark = `--accent:hsl(${h},50%,57%);--lit:hsl(${h},60%,66%);--lit-bg:hsla(${h},50%,57%,.1);--card-open-border:hsla(${h},50%,57%,.32)`;
+  // Every stop below is the brass default re-expressed in HSL -- #faf7f1 is hsl(40,47%,96%),
+  // #dcb974 is hsl(38,60%,66%) -- so lightness never moves and the contrast pairs the STYLE
+  // block's comments were measured against hold for every hue.
+  //
+  // --cta-bg is the one stop that is not a straight translation: the default #1d1a16 is
+  // hsl(35,14%,10%), and 14% saturation on a near-black is a hue nobody can see, so the light
+  // CTA would have stayed a black pill whatever the owner picked. Saturation is raised to 42%
+  // (a deep tint of their colour, not a black); lightness is held, which is the half of it that
+  // contrast depends on -- cream ink on this still measures past 14:1 at any hue.
+  const light =
+    `--accent:hsl(${h},57%,35%);--lit:hsl(${h},52%,47%);--lit-bg:hsla(${h},52%,47%,.1);`
+    + `--card-open-border:hsla(${h},52%,39%,.35);`
+    + `--cta-bg:hsl(${h},42%,12%);--cta-border:hsl(${h},42%,12%);`
+    + `--cta-ink:hsl(${h},47%,96%);--cta-arrow:hsl(${h},60%,66%)`;
+  const dark =
+    `--accent:hsl(${h},50%,57%);--lit:hsl(${h},60%,66%);--lit-bg:hsla(${h},50%,57%,.1);`
+    + `--card-open-border:hsla(${h},50%,57%,.32);`
+    + `--card-open-bg:linear-gradient(180deg,hsla(${h},50%,57%,.07),hsla(${h},50%,57%,.015));`
+    + `--cta-bg:hsla(${h},50%,57%,.09);--cta-border:hsla(${h},50%,57%,.45);`
+    + `--cta-ink:hsl(${h},60%,66%);--cta-arrow:hsl(${h},50%,57%)`;
   // Declared twice for the same reason the STYLE block declares its dark vars twice: the media
   // query follows the system, the [data-theme] rule has to beat it when the diner toggled.
   return `<style>:root{${light}}`
@@ -1131,6 +1233,35 @@ ${
       <input id="sp-photo" type="file" accept="image/*" capture="environment" hidden>
       <button class="btn btn-ghost" type="button" id="sp-manual">Type it in instead</button>
       <p class="sp-note" id="sp-scan-note" hidden></p>
+    </div>
+
+    <!-- The scanner. Deliberately NOT a wizard step: a transient takeover while Tesseract works,
+         so it stays out of PANES and out of the saved step -- a reload mid-scan must land on the
+         start pane, never on a progress bar for a scan that is no longer running. The paper is
+         decoration around one number, so it is hidden from assistive tech and the number spoken. -->
+    <div class="sp-scan" id="sp-scan" hidden>
+      <div class="sp-scan-grid" aria-hidden="true"></div>
+      <div class="sp-scan-top">
+        <span>SCAN &middot; 01</span>
+        <span class="sp-live"><i aria-hidden="true"></i>ON DEVICE</span>
+      </div>
+      <div class="sp-frame" aria-hidden="true">
+        <div class="sp-receipt">
+          <i class="sp-sk-h"></i><i class="sp-sk-s"></i>
+          <div class="sp-sk-rows" id="sp-sk-rows">${'<div class="sp-sk-row"><i></i><b></b></div>'.repeat(6)}</div>
+        </div>
+        <div class="sp-beam"></div>
+        <span class="sp-br"></span><span class="sp-br"></span><span class="sp-br"></span><span class="sp-br"></span>
+        <div class="sp-motes" id="sp-motes"></div>
+      </div>
+      <div class="sp-scan-foot">
+        <div class="sp-scan-phase">
+          <span id="sp-phase" aria-live="polite">ALIGNING EDGES</span><span id="sp-pct">0%</span>
+        </div>
+        <div class="sp-bar" id="sp-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+             aria-valuenow="0"><i></i></div>
+        <div class="sp-tele" id="sp-tele">ON DEVICE &middot; NOTHING UPLOADED</div>
+      </div>
     </div>
 
     <div class="sp-pane" id="sp-items" hidden>
@@ -2162,14 +2293,32 @@ ${
       syncNav();
     }
 
-    document.getElementById('open-split').onclick = function(){
+    var openBtn = document.getElementById('open-split');
+    openBtn.onclick = function(){
       sheet.hidden = true;
       splitEl.hidden = false;
+      S.open = true;
       totalEl.value = S.billTotalCents === null || S.billTotalCents === undefined ? '' : rands(S.billTotalCents);
       tipAmtEl.value = S.tip.mode === 'amount' ? rands(S.tip.value) : '';
       go(S.items.length ? (S.step || 0) : 0);
     };
-    document.getElementById('close-split').onclick = function(){ splitEl.hidden = true; };
+    document.getElementById('close-split').onclick = function(){
+      splitEl.hidden = true;
+      S.open = false;
+      save();
+    };
+
+    // Reopen a split that a reload interrupted. Opening the camera on a page holding Tesseract's
+    // wasm is exactly when a phone discards the tab, so the diner comes back to a fresh document
+    // with the overlay hidden -- which reads as "it threw my bill away and went back to the menu".
+    // The split itself was never lost, only the overlay; this puts them back where they were.
+    //
+    // The signal is the overlay's own flag, not the wizard step: the camera button lives on the
+    // start pane, so an interrupted scan is ALWAYS interrupted at step 0 and any step-based test
+    // is dead code for the one case this exists for. Cleared by the close button and by Start
+    // over, so a diner who finished never gets it thrown back over the menu; load()'s twelve-hour
+    // ceiling bounds the rest.
+    if(S.open) openBtn.onclick();
     document.getElementById('sp-manual').onclick = function(){ go(1); };
     backBtn.onclick = function(){ go(S.step - 1); };
     nextBtn.onclick = function(){ go(S.step + 1); };
@@ -2250,6 +2399,9 @@ ${
 
     document.getElementById('sp-reset').onclick = function(){
       S = fresh();
+      // fresh() itself has no open flag -- it is also what load() falls back to, and a first-time
+      // visitor must not have the splitter open itself over the menu.
+      S.open = true;
       totalEl.value = '';
       tipAmtEl.value = '';
       save();
@@ -2260,7 +2412,68 @@ ${
     (function(){
       var photo = document.getElementById('sp-photo');
       var note = document.getElementById('sp-scan-note');
+      var scanEl = document.getElementById('sp-scan');
+      var barEl = document.getElementById('sp-bar');
+      var fillEl = barEl.querySelector('i');
+      var phaseEl = document.getElementById('sp-phase');
+      var pctEl = document.getElementById('sp-pct');
+      var teleEl = document.getElementById('sp-tele');
+      var motesEl = document.getElementById('sp-motes');
+      var rows = document.getElementById('sp-sk-rows').children;
+      var TELE = 'ON DEVICE · NOTHING UPLOADED';
       var scanning = false;
+
+      // The four phases the canvas names, wired to the four the pipeline actually has, so the
+      // words are true rather than a sequence on a timer: aligning IS prep()'s threshold pass,
+      // reading IS the recognise pass, matching IS parseReceipt(). The percentage is Tesseract's
+      // own, scaled into the band that pass occupies, so the bar never runs backwards.
+      function progress(phase, pct){
+        // Guarded because #sp-phase is aria-live: assigning the same string on every one of
+        // Tesseract's ticks makes a screen reader say it dozens of times per scan.
+        if(phaseEl.textContent !== phase) phaseEl.textContent = phase;
+        pctEl.textContent = Math.round(pct) + '%';
+        fillEl.style.width = pct + '%';
+        barEl.setAttribute('aria-valuenow', Math.round(pct));
+        // The skeleton fills in as the pass runs -- a loading placeholder, not a claim about how
+        // many lines the bill has. That number is unknown until parseReceipt() returns, and it
+        // goes in the telemetry line below, where it can be the truth.
+        var seen = Math.floor(pct / 100 * (rows.length + 0.5));
+        for(var i = 0; i < rows.length; i++) rows[i].className = i < seen ? 'sp-sk-row on' : 'sp-sk-row';
+      }
+
+      // Bill vocabulary drifting up off the paper. Each mote removes itself and schedules the
+      // next -- the canvas keeps the last six in state, which is a list to maintain for something
+      // on screen for 1.6 seconds.
+      function mote(){
+        if(scanEl.hidden) return;
+        var TOK = ['R', 'OCR', '98.50', '×2', 'ITEM', 'R145', 'VAT', '26.00'];
+        var el = document.createElement('span');
+        el.className = 'sp-mote';
+        el.textContent = TOK[Math.floor(Math.random() * TOK.length)];
+        el.style.left = Math.round(6 + Math.random() * 76) + '%';
+        el.style.top = Math.round(10 + Math.random() * 78) + '%';
+        motesEl.appendChild(el);
+        setTimeout(function(){ el.remove(); }, 1600);
+        setTimeout(mote, 240 + Math.random() * 260);
+      }
+
+      // ponytail: read per scan, not watched. Nobody changes this mid-scan.
+      function calm(){
+        return window.matchMedia && matchMedia('(prefers-reduced-motion:reduce)').matches;
+      }
+
+      function showScan(on){
+        scanEl.hidden = !on;
+        if(on){ if(!calm()) mote(); } else { motesEl.innerHTML = ''; teleEl.textContent = TELE; }
+      }
+
+      // Every way out of the scanner that is not the item list. It covers the whole overlay, so
+      // failing silently would leave a progress bar frozen at whatever percent it died on.
+      function fail(text){
+        showScan(false);
+        note.hidden = false;
+        note.textContent = text;
+      }
 
       // ponytail: fetched on first scan, never on page load. A menu opened off a coaster must not
       // pay for a feature most diners never touch, and Tesseract's runtime downloads dwarf this
@@ -2318,24 +2531,44 @@ ${
         });
       }
 
+      // Closing the overlay abandons the scanner too: reopening should offer a fresh start, not
+      // the frozen bar of a scan that died with the last document. Added alongside the split's own
+      // close handler rather than folded into it -- showScan lives in here.
+      document.getElementById('close-split').addEventListener('click', function(){ showScan(false); });
+
       photo.addEventListener('change', function(){
         var file = photo.files && photo.files[0];
-        // Cleared immediately so re-picking the same photo still fires a change event.
-        photo.value = '';
         if(!file || scanning) return;
         scanning = true;
-        note.hidden = false;
-        note.textContent = 'Getting the scanner ready…';
+        note.hidden = true;
+        // The shutter fires before the scanner appears -- it covers the swap, so the paper is
+        // already there when the flash clears.
+        if(!calm()){
+          var flash = document.createElement('div');
+          flash.className = 'sp-flash';
+          splitEl.appendChild(flash);
+          setTimeout(function(){ flash.remove(); }, 400);
+        }
+        showScan(true);
+        progress('WAKING THE SCANNER', 4);
+
+        // A stalled request fires neither onload nor onerror, so the chain can simply never
+        // settle. That used to leave a stale line of text; it now leaves a full-screen takeover
+        // with no way out and no way to retry, so it needs a floor. 90s is well past a slow
+        // phone's own recognise pass -- anything longer is not coming back.
+        var dead = setTimeout(function(){
+          if(scanning){ scanning = false; fail('That took too long. Try again, or type the items in.'); }
+        }, 90000);
 
         var worker = null;
         loadOcr()
-          .then(function(){ return prep(file); })
+          .then(function(){ progress('ALIGNING EDGES', 12); return prep(file); })
           .then(function(canvas){
-            note.textContent = 'Reading the bill…';
+            progress('READING LINE ITEMS', 20);
             return window.Tesseract.createWorker('eng', 1, {
               logger: function(m){
                 if(m.status === 'recognizing text'){
-                  note.textContent = 'Reading the bill… ' + Math.round(m.progress * 100) + '%';
+                  progress('READING LINE ITEMS', 20 + m.progress * 70);
                 }
               }
             }).then(function(w){
@@ -2349,22 +2582,36 @@ ${
             });
           })
           .then(function(res){
+            progress('MATCHING PRICES', 95);
             var found = parseReceipt(res.data.text);
             found.forEach(function(item){ item.who = []; });
             // Appended rather than replacing: scanning the second page of a long bill should leave
             // you holding both, and a bad photo is one Start over away.
             S.items = S.items.concat(found);
             save();
-            note.textContent = found.length
-              ? ('Found ' + found.length + (found.length === 1 ? ' line' : ' lines') + ' — check them over.')
-              : 'Could not read that one. Try again in better light, or type the items in.';
-            if(found.length) go(1);
+            if(!found.length){
+              fail('Could not read that one. Try again in better light, or type the items in.');
+              return;
+            }
+            progress('RECONCILING TOTAL', 100);
+            teleEl.textContent = found.length + (found.length === 1 ? ' LINE' : ' LINES') + ' CAPTURED';
+            // Held at 100% for a beat before the item list replaces it: that count is the one
+            // thing here worth reading. A promise, so the cleanup below still runs after it.
+            return new Promise(function(done){
+              setTimeout(function(){ showScan(false); go(1); done(); }, 420);
+            });
           })
           .catch(function(){
-            note.textContent = 'Could not read that one. You can type the items in instead.';
+            fail('Could not read that one. You can type the items in instead.');
           })
           .then(function(){
             scanning = false;
+            clearTimeout(dead);
+            // Cleared here, not on the way in: iOS invalidates the File's backing store when the
+            // input that produced it is reset, and prep() reads the file well after that -- on the
+            // first scan it waits on Tesseract's CDN first. Clearing after the read still leaves
+            // the input empty before the next pick, which is all "re-pick the same photo" needs.
+            photo.value = '';
             // The worker holds the language data in memory; a phone that has been at this for a
             // few scans will thank us.
             if(worker) worker.terminate();

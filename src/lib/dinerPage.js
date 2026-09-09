@@ -2531,10 +2531,10 @@ ${
             canvas.height = Math.round(img.height * scale);
             var ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            // 4 bytes per SENSOR pixel -- ~49MB for a 12MP photo, ~192MB for a 48MP one -- and
-            // Tesseract is about to ask for a 100MB+ wasm heap. Dropping the frame here makes the
-            // two peaks consecutive rather than simultaneous. Handlers first: an empty src marks
-            // the image broken, which would otherwise re-enter onerror and reject after resolve.
+            // 4 bytes per SENSOR pixel (~192MB for a 48MP photo), and Tesseract is about to ask
+            // for a 100MB+ wasm heap. Dropping the frame here makes those peaks consecutive, not
+            // simultaneous. Handlers first: an empty src marks the image broken and would
+            // otherwise re-enter onerror and reject after resolve.
             img.onload = img.onerror = null;
             img.src = '';
 
@@ -2590,15 +2590,10 @@ ${
               }
             }).then(function(w){
               worker = w;
-              // 6 = one uniform block, which for Tesseract means "do no column analysis at all".
-              // That is the whole point. A bill separates the item from its price with a wide gap
-              // -- dot leaders, or just spaces to a right-aligned column -- and any mode that
-              // looks for columns reads that gap as a column boundary and returns ONE side of it.
-              // Measured on three rendered bills (dot leaders / right-aligned / "1 x item R89"),
-              // mode 4 recovered 0, 0 and 4 items where 6 recovered 4, 4 and 4; on the third, 4
-              // also ate the leading quantity and named the dish "x Buffalo Wings". Mode 4 is the
-              // trap here, not the fix: it does MORE column detection than the 3 it replaced.
-              // Cannot be caught in Node -- it takes a real frame through real Tesseract.
+              // 6 = one uniform block: no column analysis at all, which is the point. A bill puts
+              // a wide gap between item and price, and any column-detecting mode reads that as a
+              // boundary and returns one side of it. Mode 4 scored 0 items on two of three test
+              // bills; npm run browser is what measures this, and Node cannot.
               return w.setParameters({ tessedit_pageseg_mode: '6' }).then(function(){
                 return w.recognize(canvas);
               });

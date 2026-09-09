@@ -220,6 +220,14 @@ test('one confirm button per rateable dish, none for the sold-out one', () => {
   assert.ok(html.includes('<div class="confirm-wrap" hidden>'));
 });
 
+test('a dish rating is only ever posted from the Confirm handler', () => {
+  // A stray tap on a star must not write anything: the route takes 1-5 with no delete, so an
+  // accidental rating can be corrected but never removed. One post in the whole script -- the
+  // one inside confirmBtn's click -- is what keeps the star tap a selection.
+  const posts = html.match(/post\('\/item-rating'/g) || [];
+  assert.strictEqual(posts.length, 1);
+});
+
 test('a dish with no price shows no price, not R0.00', () => {
   assert.ok(html.includes('Soup of the day'));
   assert.ok(!html.includes('R0.00'));

@@ -1404,10 +1404,12 @@ ${
     });
   });
 
-  // The star tap itself still saves the rating alone, optimistically -- a diner who rates two
-  // dishes and then closes the tab still gave us two ratings, which on a restaurant table is the
-  // normal case, not the edge. The Confirm button that morphs in below is what saves a note: an
-  // input with no visible "done" action is easy to type into and never actually submit.
+  // Nothing is written until Confirm. The tap is a selection only: a stray tap on the wrong star
+  // is free to correct, which matters because the route takes 1-5 and has no delete, so a rating
+  // that lands by accident can be changed but never taken back.
+  //
+  // That makes this post the only one, so unlike the old optimistic tap it has to admit a
+  // failure instead of quietly showing Saved -- same reasoning as the service buttons below.
   document.querySelectorAll('.faces[data-item]').forEach(function(group){
     var rate = group.closest('.rate');
     var note = rate.querySelector('.note');
@@ -1417,10 +1419,13 @@ ${
     group.addEventListener('click', function(e){
       var btn = e.target.closest('.face');
       if(!btn) return;
-      var rating = Number(btn.dataset.r);
-      select(group, rating);          // optimistic: the tap reads as instant on bad signal
-      post('/item-rating', { itemId: group.dataset.item, rating: rating });
+      select(group, Number(btn.dataset.r));
       confirmWrap.hidden = false;     // morphs in -- there is now something to confirm
+      // Re-armed after a save: changing the stars has to be confirmable, or the first Confirm
+      // is final and a corrected rating never reaches the upsert.
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = 'Confirm';
+      confirmBtn.classList.remove('sent');
     });
 
     confirmBtn.addEventListener('click', function(){
@@ -1429,10 +1434,14 @@ ${
         itemId: group.dataset.item,
         rating: Number(group.dataset.rating),
         comment: note.value
-      }).catch(function(){}).then(function(){
+      }).then(function(res){
+        if(!res.ok) throw new Error();
         confirmBtn.textContent = 'Saved ✓';
         confirmBtn.classList.add('sent');
         replay(confirmBtn, 'pop');
+      }).catch(function(){
+        confirmBtn.textContent = 'Could not save — tap to retry';
+        confirmBtn.disabled = false;
       });
     });
   });
@@ -1776,9 +1785,9 @@ ${
       });
     }
 
-    // NOT optimistic, unlike the item ratings above. A rating that silently failed costs a data
-    // point; a bill request that silently failed leaves someone waiting for a waiter who was
-    // never called, and they will blame the restaurant for it, not a dropped packet.
+    // Nothing here is optimistic. A request that silently failed leaves someone waiting for a
+    // waiter who was never called, and they will blame the restaurant for it, not a dropped
+    // packet -- so the button says so and stays tappable.
     function send(kind, table){
       var els = ofKind(kind);
       els.forEach(function(el){ el.disabled = true; });

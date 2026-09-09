@@ -2,3 +2,7 @@ node_modules/
 .vercel
 .env*
 !.env.example
+
+# Claude Code harness state; the skills under .claude/skills are tracked.
+.claude/*
+!.claude/skills/

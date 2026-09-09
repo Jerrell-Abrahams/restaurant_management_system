@@ -2590,10 +2590,16 @@ ${
               }
             }).then(function(w){
               worker = w;
-              // A bill is a single column. The default segmentation mode hunts for blocks and
-              // merges neighbouring columns into one line, which is precisely the failure that
-              // lands a price against the wrong item.
-              return w.setParameters({ tessedit_pageseg_mode: '4' }).then(function(){
+              // 6 = one uniform block, which for Tesseract means "do no column analysis at all".
+              // That is the whole point. A bill separates the item from its price with a wide gap
+              // -- dot leaders, or just spaces to a right-aligned column -- and any mode that
+              // looks for columns reads that gap as a column boundary and returns ONE side of it.
+              // Measured on three rendered bills (dot leaders / right-aligned / "1 x item R89"),
+              // mode 4 recovered 0, 0 and 4 items where 6 recovered 4, 4 and 4; on the third, 4
+              // also ate the leading quantity and named the dish "x Buffalo Wings". Mode 4 is the
+              // trap here, not the fix: it does MORE column detection than the 3 it replaced.
+              // Cannot be caught in Node -- it takes a real frame through real Tesseract.
+              return w.setParameters({ tessedit_pageseg_mode: '6' }).then(function(){
                 return w.recognize(canvas);
               });
             });

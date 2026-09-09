@@ -218,6 +218,10 @@ function binarize(px, w, h) {
   // The integral image is what keeps that per-pixel window O(1) instead of O(window), which is
   // the difference between this pass and a phone that appears to have frozen.
   var W = w + 1;
+  // Holds w*h*255, so Uint32 runs out at about 4100px square. The caller's 1500px downscale is what
+  // keeps this in range and is load-bearing for correctness, not just memory: each window sum is a
+  // difference of four entries, so once they wrap independently the result is off by whole
+  // multiples of 2^32 in either direction and the page binarizes to noise, not to a blank.
   var sum = new Uint32Array(W * (h + 1));
   for (y = 0; y < h; y++) {
     var run = 0;

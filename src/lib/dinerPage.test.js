@@ -100,6 +100,24 @@ test('the scanner reports the real pass, not a scripted one', () => {
   assert.ok(!/PANES = \[[^\]]*sp-scan/.test(html));
 });
 
+test('the scan downscales before binarize, and releases the frame before Tesseract', () => {
+  // binarize() sums the whole frame into a Uint32 integral image, which holds w*h*255 and so wraps
+  // at about 4100px square. This cap is the only thing keeping it in range, and "more pixels reads
+  // better" is exactly the change someone makes to improve OCR -- so the number is pinned here
+  // rather than left to a comment in a file that ships to the browser and is never run in Node.
+  assert.ok(html.includes('Math.min(1, 1500 / Math.max(img.width, img.height))'));
+
+  // And the decoded frame -- ~49MB for a 12MP photo, ~192MB for a 48MP one -- must be dropped
+  // before the wasm heap allocates, or a cheap phone carries both peaks at once and reloads the
+  // tab. The handlers are nulled first: an empty src marks the image broken and would otherwise
+  // re-enter onerror.
+  assert.ok(html.includes('img.onload = img.onerror = null;'));
+  // Asserted present before it is ordered: a missing needle indexOf's to -1, which would satisfy
+  // the < on its own and pass this test for a page that never releases the frame at all.
+  assert.ok(html.includes("img.src = '';"));
+  assert.ok(html.indexOf("img.src = '';") < html.indexOf('w.recognize(canvas)'));
+});
+
 test('a split interrupted by a reload reopens itself', () => {
   // The phone discards the tab while the camera is open -- commonly on the second scan, with
   // Tesseract's wasm already resident -- and the diner lands back on the menu. The saved split is

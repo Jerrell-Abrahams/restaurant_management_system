@@ -2531,6 +2531,12 @@ ${
             canvas.height = Math.round(img.height * scale);
             var ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            // 4 bytes per SENSOR pixel -- ~49MB for a 12MP photo, ~192MB for a 48MP one -- and
+            // Tesseract is about to ask for a 100MB+ wasm heap. Dropping the frame here makes the
+            // two peaks consecutive rather than simultaneous. Handlers first: an empty src marks
+            // the image broken, which would otherwise re-enter onerror and reject after resolve.
+            img.onload = img.onerror = null;
+            img.src = '';
 
             var data = ctx.getImageData(0, 0, canvas.width, canvas.height);
             binarize(data.data, canvas.width, canvas.height);

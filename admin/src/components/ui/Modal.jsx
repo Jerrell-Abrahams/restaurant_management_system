@@ -17,7 +17,14 @@ export function Modal({ open, onOpenChange, title, children }) {
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/60 data-[state=open]:animate-overlay-in data-[state=closed]:animate-overlay-out" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-border bg-panel p-4 shadow-[var(--lift)] focus:outline-none data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out sm:p-5">
+        {/* Radix focuses the first tabbable thing in the content on open -- which is the X, or a
+            Name field with autoFocus on it. Neither is wanted: on a phone that opens the keyboard
+            over the dialog before the person has read it. So focus is moved to the content box
+            instead, which FocusScope gives tabIndex -1 (hence focus:outline-none below).
+            The explicit focus() is not optional: Radix's own "focus the container" fallback sits
+            INSIDE the `if (!defaultPrevented)` branch, so preventing the event alone leaves focus
+            on the trigger, outside the dialog -- and a screen reader never announces the title. */}
+        <Dialog.Content onOpenAutoFocus={(e) => { e.preventDefault(); e.currentTarget.focus(); }} className="fixed left-1/2 top-1/2 max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-border bg-panel p-4 shadow-[var(--lift)] focus:outline-none data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out sm:p-5">
           <div className="mb-4 flex items-center justify-between">
             <Dialog.Title className="text-[15px] font-semibold text-text">{shown.title}</Dialog.Title>
             <Dialog.Close asChild>

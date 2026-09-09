@@ -192,6 +192,9 @@
   --lift: 0 10px 30px rgba(60, 45, 30, 0.12);
 }
 
+/* No -webkit-tap-highlight-color here on purpose: Tailwind v4's preflight already sets it to
+ * transparent on `html, :host`, so adding it again turns off something already off. What the
+ * console was actually missing is the :active rule in @layer base -- see there. */
 * {
   box-sizing: border-box;
 }
@@ -218,6 +221,16 @@ body {
   button:not(:disabled),
   [role='button']:not(:disabled) {
     cursor: pointer;
+  }
+
+  /* The console's only touch feedback. Tailwind's preflight turns the browser's tap flash off
+   * and nothing here defined an :active state to replace it, so every tap on a phone looked
+   * like nothing had happened until the state change landed. Layered, so a component that
+   * does define its own pressed style still wins. */
+  a:active,
+  button:not(:disabled):active,
+  [role='button']:not(:disabled):active {
+    opacity: 0.7;
   }
 }
 

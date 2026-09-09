@@ -389,7 +389,7 @@ function CategoryModal({ state, saving, onClose, onSave }) {
     <Modal open={!!state} onOpenChange={(o) => !o && onClose()} title={state?.id ? 'Edit section' : 'New section'}>
       <form onSubmit={(e) => { e.preventDefault(); onSave({ name, hours }); }} className="flex flex-col gap-3">
         <Field label="Name">
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Starters" required autoFocus />
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Starters" required />
         </Field>
         {/* Only once the section exists -- a brand-new section is created with no schedule, and
             gets one via a second edit rather than crowding the "New section" modal with it. */}
@@ -494,7 +494,7 @@ function ItemModal({ state, saving, onClose, onSave }) {
         className="flex flex-col gap-4"
       >
         <Field label="Name">
-          <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Calamari" required autoFocus />
+          <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Calamari" required />
         </Field>
         <Field label="Description" hint="Optional.">
           <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Grilled, lemon butter" />

@@ -25,6 +25,10 @@ export function Settings() {
   // only way to show a change, and the only way that cannot drift from what a diner sees.
   const [previewV, setPreviewV] = useState(0);
   const refreshPreview = () => setPreviewV((v) => v + 1);
+  // The hue the frame is currently rendering, which is NOT form.brandHue: the slider fires a
+  // change per degree, and the frame is a page load. Committed on release instead (see the
+  // slider below), so a full sweep costs one reload rather than ~360.
+  const [previewHue, setPreviewHue] = useState('');
 
   useEffect(() => {
     if (restaurant) {
@@ -44,8 +48,13 @@ export function Settings() {
         logoUrl: restaurant.logo_url || '',
         brandHue: restaurant.brand_hue ?? '',
       });
+      setPreviewHue(restaurant.brand_hue ?? '');
     }
-  }, [restaurant]);
+    // On the id, not the object: this seeds the edit buffer when a restaurant loads, and reload()
+    // hands back a new object every time it runs -- so on [restaurant] a logo upload would quietly
+    // throw away an unsaved hue, or an unsaved name. Every caller of reload() already setForm()s
+    // the field it changed, so nothing here needs the re-seed.
+  }, [restaurant?.id]);
 
   if (!form) return null;
 
@@ -53,6 +62,11 @@ export function Settings() {
   // slider has to sit somewhere, and sitting on the colour actually being rendered means picking
   // it up and putting it back down is a no-op rather than a silent theme change.
   const hue = form.brandHue === '' ? 38 : form.brandHue;
+
+  // What diners are actually being served right now. form.brandHue cannot tell the states apart on
+  // its own: '' is both "never had a colour" and "just cleared a saved one", and a saved hue is
+  // indistinguishable from one picked a second ago.
+  const savedHue = restaurant.brand_hue ?? '';
 
   // Sent as raw base64, not a data URL -- src/lib/logo.js decodes the field directly, the same
   // shape the existing QR upload already uses for the same reason (no multipart-parsing dep in
@@ -94,19 +108,6 @@ export function Settings() {
     }
   }
 
-  // Saves on release, not on every pixel of the drag -- dragging a range input fires a change per
-  // step, which would be ~360 PATCHes across one sweep. Same "applies immediately, no unsaved
-  // state" contract as the logo above: the preview frame can then only ever show the truth.
-  async function saveHue(hue) {
-    try {
-      await api.updateRestaurant(restaurantId, { brandHue: hue === '' ? null : hue });
-      reload();
-      refreshPreview();
-    } catch (err) {
-      toast.error(err.message);
-    }
-  }
-
   async function save(e) {
     e.preventDefault();
     setBusy(true);
@@ -114,6 +115,9 @@ export function Settings() {
       await api.updateRestaurant(restaurantId, form);
       toast.success('Saved');
       reload();
+      // The frame has been showing the pending hue all along, but not the pending name, hours or
+      // closed note -- this is the point at which all of them become true at once.
+      refreshPreview();
     } catch (err) {
       toast.error(err.message);
     } finally {
@@ -208,9 +212,10 @@ export function Settings() {
         <div className="flex flex-col gap-5 p-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex min-w-0 flex-1 flex-col gap-3">
             <p className="text-[11.5px] leading-relaxed text-dim">
-              Your colour on the menu: prices, dietary and promo pills, the open-now badge, and the
-              highlight around an opened dish. Card outlines and body text stay neutral — those are
-              what keep the menu readable on a phone in a dark restaurant.
+              Your colour on the menu: prices, the promo and dietary pills, the open-now badge, the
+              buttons along the bottom, and the highlight around an opened dish. Card
+              outlines and body text stay neutral — those are what keep the menu readable on a
+              phone in a dark restaurant.
             </p>
             <div className="flex items-center gap-3">
               <span
@@ -229,18 +234,22 @@ export function Settings() {
                 className="h-9 w-full cursor-pointer"
                 style={{ accentColor: `hsl(${hue},57%,35%)` }}
                 onChange={(e) => setForm({ ...form, brandHue: Number(e.target.value) })}
-                onPointerUp={(e) => saveHue(Number(e.target.value))}
-                onKeyUp={(e) => e.key.startsWith('Arrow') && saveHue(Number(e.target.value))}
+                onPointerUp={(e) => setPreviewHue(Number(e.target.value))}
+                onKeyUp={(e) => e.key.startsWith('Arrow') && setPreviewHue(Number(e.target.value))}
               />
             </div>
             <div className="flex items-center gap-3">
               <span className="text-[11px] text-dim">
-                {form.brandHue === '' ? 'Using the default' : 'Saved as you release the slider'}
+                {form.brandHue !== savedHue
+                  ? 'Not live yet — Save changes below'
+                  : form.brandHue === ''
+                    ? 'Using the default'
+                    : 'Live on your menu'}
               </span>
               {form.brandHue !== '' && (
                 <button
                   type="button"
-                  onClick={() => { setForm({ ...form, brandHue: '' }); saveHue(''); }}
+                  onClick={() => { setForm({ ...form, brandHue: '' }); setPreviewHue(''); }}
                   className="text-[11.5px] text-bad hover:underline"
                 >
                   Use the default
@@ -249,16 +258,20 @@ export function Settings() {
             </div>
           </div>
 
-          <div className="flex shrink-0 flex-col gap-2">
+          {/* The width lives on the COLUMN, not only on the phone frame inside it. shrink-0 with
+              no width sizes to max-content, and the caption below is one long sentence -- so the
+              column claimed ~900px, squeezed the copy on the left to one word per line and pushed
+              the frame out over it. */}
+          <div className="flex w-[330px] max-w-full shrink-0 flex-col gap-2">
             <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-dim">Live preview</p>
-            <div className="w-[330px] max-w-full overflow-hidden rounded-[26px] border border-border-2 bg-panel p-2">
+            <div className="overflow-hidden rounded-[26px] border border-border-2 bg-panel p-2">
               {/* The real diner page, not a mock of it -- served from the API with ?preview=1, which
                   strips the scan beacon and neuters every write (src/lib/dinerPage.js). A rebuilt
                   approximation in React would be a second menu renderer to keep in sync forever. */}
               <iframe
-                key={previewV}
+                key={`${previewV}:${previewHue}`}
                 title="Menu preview"
-                src={`${API_BASE_URL}/${restaurant.slug}?preview=1`}
+                src={`${API_BASE_URL}/${restaurant.slug}?preview=1&hue=${previewHue}`}
                 className="h-[560px] w-full rounded-[18px] border-0 bg-bg"
               />
             </div>

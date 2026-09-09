@@ -133,7 +133,15 @@ router.get('/:slug', async (req, res) => {
   // Menus change rarely and this is the cold path on restaurant wifi, so a short shared cache is
   // worth more than instant propagation of a price edit.
   else res.set('Cache-Control', 'public, max-age=60');
-  res.type('html').send(renderPage({ restaurant: ctx.restaurant, menu, preview }));
+  // Preview only: ?hue lets the Settings slider show a colour that has not been saved yet -- the
+  // frame is a different origin, so a reload is the only way that SPA can repaint it. Never
+  // honoured on the real menu, or a link with ?hue=0 would repaint someone else's restaurant.
+  // Left unvalidated on purpose: themeCss() already drops anything that is not 0-360.
+  const shown =
+    preview && req.query.hue !== undefined
+      ? { ...ctx.restaurant, brand_hue: req.query.hue === '' ? null : Number(req.query.hue) }
+      : ctx.restaurant;
+  res.type('html').send(renderPage({ restaurant: shown, menu, preview }));
 });
 
 // --- QR scans ------------------------------------------------------------------------------

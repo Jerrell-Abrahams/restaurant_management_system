@@ -702,10 +702,14 @@ const STYLE_MIN = squeeze(STYLE);
 //
 // It is no longer the smaller half, though, and that half of this note has stopped being true:
 // the bill splitter and its receipt scanner took the script to ~19KB gzipped against this
-// stylesheet's ~5KB, and it is now roughly 70% of what a phone downloads. The regex is still the
-// wrong answer. The right one, when the wire budget in scripts/smoke.js next trips, is to stop
-// shipping the splitter to the diners who never tap it -- serve it from its own route and fetch
-// it on first tap -- rather than to squeeze the source everyone reads.
+// stylesheet's ~5KB, and it is now roughly 70% of what a phone downloads.
+//
+// The regex is still the wrong answer. Serving the splitter from its own route and fetching it on
+// first tap was the answer this note used to give, and it is not that either: the splitter has to
+// survive a reload with no network at all, because the reload it has to survive is a phone
+// discarding the tab mid-scan on restaurant wifi. It stays in the page. If the budget in
+// scripts/smoke.js has to move again, move it with a real build step and a real minifier, which
+// takes the comments and whitespace off the wire without taking them out of this file.
 
 // The rating control, shared by the per-dish strip and the visit overlay. aria-label is spelled
 // "N out of 5" rather than naming the shape: COMPLIANCE.md 4 keeps every number in the copy well

@@ -12,7 +12,7 @@
 //
 // What it pins:
 //   * a photographed bill comes back as line items, through the real prep -> binarize -> Tesseract
-//     -> parseReceipt pipeline. Three layouts, because the failure was layout-dependent: a mode
+//     -> parseReceipt pipeline. Four layouts, because the failure was layout-dependent: a mode
 //     that does column analysis returns ONE side of the gap between item and price.
 //   * the scan beacon fires on a fresh navigation and stays silent on a reload.
 //   * prep() actually releases the decoded frame instead of holding it while Tesseract's wasm heap
@@ -89,7 +89,7 @@ async function attach() {
 }
 
 // A bill as a phone meets it: small bright slip on a dark table. The dark surround is the point --
-// it is what a global threshold cannot survive. Three layouts because the price column is exactly
+// it is what a global threshold cannot survive. Four layouts because the price column is exactly
 // what a column-detecting segmentation mode throws away.
 const slip = (rows, w = 430) => `<body style="margin:0;background:#20180f;display:flex;justify-content:center;padding:80px 0">
 <div style="background:#f4efe4;width:${w}px;padding:26px 30px;font:19px/1.65 'Courier New',monospace;color:#2a2a2a">
@@ -104,7 +104,19 @@ const LAYOUTS = {
   'qty and rand': slip(`<div>1 x Calamari          R 89.00</div><div>1 x Buffalo Wings     R 75.00</div>
 <div>1 x Beef Burger      R 120.00</div><div>1 x Still Water       R 25.50</div>
 <div>TOTAL                R 309.50</div>`, 470),
+  // A bare numeric quantity column and a VAT code against each amount -- what a GAAP or Micros
+  // slip actually looks like, and the pair the other three layouts happen to dodge. The qty ran
+  // into the rands (R89.00 read as R189.00) and the trailing code dropped the line outright, and
+  // neither shows up in a check that only counts how many lines came back. Hence PRICES below.
+  'qty column and vat codes': slip(`<div>1    Calamari             89.00 V</div><div>1    Buffalo Wings        75.00 V</div>
+<div>1    Beef Burger         120.00 V</div><div>1    Still Water          25.50 V</div>
+<div>TOTAL                    309.50</div>`, 480),
 };
+
+// What every layout above says, in cents. The values are the whole point: a bill that comes back
+// with four lines and the wrong money on them is worse than one that comes back empty, because
+// the diner has no reason to look twice.
+const PRICES = [8900, 7500, 12000, 2550];
 
 (async () => {
   const res = await fetch(PAGE).catch(() => null);
@@ -280,6 +292,12 @@ const LAYOUTS = {
     const priced = items.filter((i) => /\|\d+$/.test(i));
     check(`${name}: four dishes with prices`, priced.length === 4, JSON.stringify(items));
     check(`${name}: the total is not an item`, !items.some((i) => /^TOTAL/i.test(i)));
+    // And the right money against them. Tesseract can still misread a digit, so this is the one
+    // assertion here that can fail on OCR rather than on our code -- but a systematic mangling
+    // (a quantity glued to the rands, a column read as a decimal) fails it every single run, and
+    // that is the class of bug the count above sailed straight past.
+    const cents = priced.map((i) => Number(i.split('|').pop()));
+    check(`${name}: the right money against them`, String(cents) === String(PRICES), JSON.stringify(items));
   }
 
   chrome.kill();

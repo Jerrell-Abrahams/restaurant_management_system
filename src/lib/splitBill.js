@@ -31,11 +31,29 @@ function parseReceipt(text) {
   // all things South African bills actually print. The word boundary on the R prefix is load-
   // bearing: without it the lazy name group hands the final "r" of "Platter" over as a currency
   // symbol and the item comes back named "Platte".
-  var PRICE = /^(.*?)[\s.·:_-]*?(?:\b(?:R|ZAR))?\s*(-|−)?(\d[\d\s,]*)[.,](\d{2})\s*$/i;
+  //
+  // A space or comma inside the rands is a thousands separator ONLY where it groups exactly three
+  // digits. Allowing it to group anything is what let a POS quantity column glue itself to the
+  // price: "Cappuccino  2  38.00" came back as R238.00 and "Beef Burger  2  189.00" as R2189.00 --
+  // silent, plausible, and roughly the shape of a real bill, so nobody catches it at the table.
+  // Requiring the group of three costs nothing on "1 250,00" and drops the qty on the floor.
+  //
+  // A short trailing marker is tolerated after the cents. Bills print a VAT code or an asterisk
+  // against the amount ("215.00 V", "65.00 *") and with the price pinned hard to the end of the
+  // line every one of those lines was dropped in silence, which is most of how a scan comes back
+  // with nothing on it. Up to three characters, not one: Tesseract reads a lone "V" off a thermal
+  // slip as "Vv" often enough that the real-browser check loses two lines of four to it, and a
+  // one-character allowance drops exactly the lines it was added to keep. The run stays digit-,
+  // dot- and comma-free, which is what stops it swallowing a second amount on a unit-price-and-
+  // line-total layout; widening it to accept digits would break that.
+  var PRICE = /^(.*?)[\s.·:_-]*?(?:\b(?:R|ZAR))?\s*(-|−)?(\d{1,3}(?:[\s,]\d{3})*|\d+)[.,](\d{2})\s*(?:[^\s\d.,]{1,3}\s*)?$/i;
 
   // Lines that carry a two-decimal amount but are not something a person ate. Matched against the
-  // name half only, and anchored at its start, so a dish called "Service Station Burger" is the
-  // one thing this could plausibly eat -- rare enough to be worth the false negatives it prevents.
+  // whole name, not just its start: a till label is the keyword and at most one more word after it
+  // ("Service charge", "Amount due", "VAT @ 15%"), while a dish that happens to open on one of
+  // these words carries a real name behind it. Anchoring at the start alone ate "Table Mountain
+  // Platter", "Service Station Burger" and "Cashew Nut Salad" -- and a dropped line is worse here
+  // than a kept one, because the diner can delete a row but cannot see one that never arrived.
   //
   // Deduction lines are deliberately NOT in this list. They are caught by their minus sign in
   // PRICE instead, which also catches the ones nobody thought to name here ("Staff comp", a bare
@@ -43,7 +61,7 @@ function parseReceipt(text) {
   // vocabulary out of this file is also what keeps the rendered diner page clear of the words
   // dinerPage.test.js greps it for -- see COMPLIANCE.md rule 3, and note that this source ships
   // to the browser verbatim.
-  var NOISE = /^(sub[\s-]?total|total|balance|amount|due|vat|tax|tip|gratuity|service|change|cash|card|rounding|invoice|table|thank)/i;
+  var NOISE = /^(?:sub[\s-]?total|total|balance|amount|due|vat|tax|tip|gratuity|service|change|cash|card|rounding|invoice|table|thank)[^a-z]*[a-z]*[^a-z]*$/i;
 
   var lines = String(text || '').split(/\r?\n/);
   var items = [];
@@ -51,14 +69,28 @@ function parseReceipt(text) {
   for (var i = 0; i < lines.length; i++) {
     var line = lines[i].trim();
     if (!line) continue;
+    // ponytail: a bill line is not 200 characters, and PRICE is a lazy name group in front of an
+    // alternation -- quadratic in the length of a line it cannot match. A bad photo (a menu board,
+    // a wall of text) is where OCR produces long junk lines, and this runs on the main thread
+    // right after Tesseract's wasm heap. Cap the tail rather than rewrite the regex; if a real
+    // bill ever needs more than 200, raise the number.
+    if (line.length > 200) continue;
 
     var m = line.match(PRICE);
     if (!m) {
-      // Tesseract's standing confusions, applied ONLY to the final whitespace-delimited token and
-      // only after a clean match has already failed. Contained on purpose: run this over the whole
-      // line and "Bos Salad" becomes "805 5alad". If the last token is a word rather than a price
-      // the substitution just produces junk that still fails to match, which costs nothing.
-      var fixed = line.replace(/(\S+)\s*$/, function (tok) {
+      // Tesseract's standing confusions, applied ONLY to the token the price would be in and only
+      // after a clean match has already failed. Contained on purpose: run this over the whole line
+      // and "Bos Salad" becomes "805 5alad". If that token is a word rather than a price the
+      // substitution just produces junk that still fails to match, which costs nothing.
+      //
+      // "The token the price would be in" is the last one, or the one before a trailing marker --
+      // NOT simply the last. On a bill that prints a VAT code against each amount the last token
+      // is the code, so aiming at it left the price untouched and dropped the line. That is the
+      // two failure modes compounding: O-for-0 is the commonest thing Tesseract does to a thermal
+      // slip, and a marked-up slip is exactly the kind that prints one. The marker width here
+      // tracks PRICE's above -- if the two disagree the fix aims at the wrong token and the line
+      // is dropped anyway.
+      var fixed = line.replace(/(\S+)(?=(?:\s*[^\s\d.,]{1,3})?\s*$)/, function (tok) {
         return tok.replace(/[OoQ]/g, '0').replace(/[IlJ]/g, '1').replace(/[Ss]/g, '5').replace(/[Bb]/g, '8');
       });
       m = fixed.match(PRICE);

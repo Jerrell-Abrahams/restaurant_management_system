@@ -136,7 +136,63 @@ test('a split interrupted by a reload reopens itself', () => {
   // real position is > -1, so the ordering below would hold for a page with no scan in it.
   assert.ok(html.includes("photo.value = ''"));
   assert.ok(html.includes('w.recognize(canvas)'));
-  assert.ok(html.indexOf("photo.value = ''") > html.indexOf('w.recognize(canvas)'));
+  assert.ok(html.lastIndexOf("photo.value = ''") > html.indexOf('w.recognize(canvas)'));
+
+  // The other clear, and the only other one allowed: the 90s floor. Abandoning a scan without
+  // emptying the input left the picked photo in it, so re-picking the SAME photo fired no change
+  // event and the page sat on the start pane doing nothing -- and retrying the photo you were
+  // just told to retry is the first thing anyone does. Scoped to the abandon block rather than
+  // asserted by position, because that one legitimately runs before the read: by then there is
+  // no read left to invalidate.
+  const abandon = html.slice(html.indexOf('if(!scanning) return;'), html.indexOf("fail('That took too long"));
+  assert.ok(abandon.includes("photo.value = ''"), 'the 90s floor must empty the input');
+  assert.strictEqual(html.split("photo.value = ''").length - 1, 2, 'exactly two clears: the floor and the settled path');
+});
+
+// --- bare(): the inlined parser ships its code, not its prose -----------------------------
+
+test('the inlined functions reach the phone with their comments stripped', () => {
+  // splitBill.js is written to be read, and toString() shipped every word of that reasoning to
+  // every diner -- ~8.5KB raw on a page whose wire ratchet is measured in hundreds of bytes.
+  // Distinctive phrases from the comments of all five inlined functions, none of which is code.
+  for (const prose of [
+    'load-bearing',
+    'thousands separator',
+    'Tesseract\x27s standing confusions',
+  ]) {
+    assert.ok(!html.includes(prose), `comment prose reached the page: ${prose}`);
+  }
+
+  // And no whole-line // comment survives anywhere inside the inlined block.
+  const open = html.indexOf('function parseReceipt(');
+  const close = html.indexOf('var KEY = \x27split:\x27');
+  assert.ok(open > -1 && close > open, 'the inlined block is not in the page');
+  const inlined = html.slice(open, close);
+  const survived = inlined.split('\n').filter((l) => l.trim().slice(0, 2) === '//');
+  assert.deepStrictEqual(survived, [], 'a // comment line survived into the inlined block');
+});
+
+test('bare() strips only comments -- the parser still parses', () => {
+  // The half that matters: stripping must not cost a single behaviour. Lift the shipped source
+  // out of the page and run it, exactly as scripts/browser.js does, on the marked-up slip that
+  // the one-character marker allowance used to drop.
+  const open = html.indexOf('function parseReceipt(');
+  let depth = 0, end = -1;
+  for (let k = html.indexOf('{', open); k < html.length; k++) {
+    if (html[k] === '{') depth++;
+    else if (html[k] === '}' && --depth === 0) { end = k + 1; break; }
+  }
+  assert.ok(end > open, 'the inlined parseReceipt is unbalanced');
+
+  const shipped = new Function('return ' + html.slice(open, end))();
+  assert.deepStrictEqual(shipped([
+    'Calamari      89.00 V',
+    'Buffalo Wings 75.00 Vv',
+    'TOTAL        164.00',
+  ].join('\n')), [
+    { name: 'Calamari', cents: 8900 },
+    { name: 'Buffalo Wings', cents: 7500 },
+  ]);
 });
 
 test('the splitter is offered even where table service is switched off', () => {

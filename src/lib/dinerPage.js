@@ -698,6 +698,21 @@ function squeeze(css) {
     .trim();
 }
 
+// The same bargain as squeeze(), for the functions inlined below by toString(). Those ship their
+// SOURCE to the phone -- reasoning, ceilings, the lot -- and splitBill.js is written to be read:
+// its comments alone are ~8.5KB raw, about 2KB compressed, on a page with a wire ratchet measured
+// in hundreds of bytes. Stripped here rather than thinned up there, so the source stays the thing
+// anyone maintaining the parser actually wants to open.
+//
+// ponytail: whole-line // comments only -- not a JS minifier, and deliberately not one. It never
+// touches code, so a regex literal or a string with // inside it is safe by construction; the
+// known ceiling is a line that BEGINS with // inside a multi-line template literal, which none of
+// the five functions has. dinerPage.test.js pins both halves: comments gone, behaviour identical.
+// Reach for a real build step when the next ratchet trips, not before.
+function bare(fn) {
+  return fn.toString().replace(/^[ \t]*\/\/.*(?:\r?\n)?/gm, '');
+}
+
 // Once, at module load. renderPage runs on every scan.
 const STYLE_MIN = squeeze(STYLE);
 
@@ -2047,19 +2062,20 @@ ${
   // --- Split the bill -------------------------------------------------------------------------
   // Runs entirely on the phone: no fetch, no route, no table. parseReceipt/settle are
   // lib/splitBill.js's own functions and parsePrice/formatCents are lib/money.js's, all four
-  // inlined by toString() so there is exactly one implementation of the receipt parsing, the cent
-  // arithmetic and the "R189.00" formatting across the server and a diner's phone. Those files'
+  // inlined by bare() -- toString with the comments taken off, since the source ships as-is -- so
+  // there is exactly one implementation of the receipt parsing, the cent arithmetic and the
+  // "R189.00" formatting across the server and a diner's phone. Those files'
   // headers say why each has to stay pure; splitBill.test.js and dinerPage.test.js enforce it.
   (function(){
-    ${parseReceipt.toString()}
+    ${bare(parseReceipt)}
 
-    ${settle.toString()}
+    ${bare(settle)}
 
-    ${binarize.toString()}
+    ${bare(binarize)}
 
-    ${parsePrice.toString()}
+    ${bare(parsePrice)}
 
-    ${formatCents.toString()}
+    ${bare(formatCents)}
 
     var KEY = 'split:' + slug;
     // Pinned exactly. The 63KB here is the small half -- Tesseract pulls its wasm core and the
@@ -2587,25 +2603,36 @@ ${
         return new Promise(function(resolve, reject){
           var img = new Image();
           var url = URL.createObjectURL(file);
+          // Everything past the decode is wrapped because it runs in a DOM event handler, not in
+          // this executor: a throw in here does NOT reject the promise, it escapes as an uncaught
+          // error and leaves the chain pending forever -- a full-screen scanner frozen at 12% with
+          // no way out until the 90s floor below fires. And it does throw on a phone under memory
+          // pressure, which is exactly this moment: getContext() hands back null when the canvas
+          // cannot be allocated, and getImageData() rejects a 0x0 frame from an image the OS
+          // declined to decode.
           img.onload = function(){
-            URL.revokeObjectURL(url);
-            var scale = Math.min(1, 1500 / Math.max(img.width, img.height));
-            var canvas = document.createElement('canvas');
-            canvas.width = Math.round(img.width * scale);
-            canvas.height = Math.round(img.height * scale);
-            var ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            // 4 bytes per SENSOR pixel (~192MB for a 48MP photo), and Tesseract is about to ask
-            // for a 100MB+ wasm heap. Dropping the frame here makes those peaks consecutive, not
-            // simultaneous. Handlers first: an empty src marks the image broken and would
-            // otherwise re-enter onerror and reject after resolve.
-            img.onload = img.onerror = null;
-            img.src = '';
+            try {
+              URL.revokeObjectURL(url);
+              var scale = Math.min(1, 1500 / Math.max(img.width, img.height));
+              var canvas = document.createElement('canvas');
+              canvas.width = Math.round(img.width * scale);
+              canvas.height = Math.round(img.height * scale);
+              if(!canvas.width || !canvas.height) throw new Error('image');
+              var ctx = canvas.getContext('2d');
+              if(!ctx) throw new Error('image');
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              // 4 bytes per SENSOR pixel (~192MB for a 48MP photo), and Tesseract is about to ask
+              // for a 100MB+ wasm heap. Dropping the frame here makes those peaks consecutive, not
+              // simultaneous. Handlers first: an empty src marks the image broken and would
+              // otherwise re-enter onerror and reject after resolve.
+              img.onload = img.onerror = null;
+              img.src = '';
 
-            var data = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            binarize(data.data, canvas.width, canvas.height);
-            ctx.putImageData(data, 0, 0);
-            resolve(canvas);
+              var data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              binarize(data.data, canvas.width, canvas.height);
+              ctx.putImageData(data, 0, 0);
+              resolve(canvas);
+            } catch(e){ reject(e); }
           };
           img.onerror = function(){ URL.revokeObjectURL(url); reject(new Error('image')); };
           img.src = url;
@@ -2617,11 +2644,28 @@ ${
       // close handler rather than folded into it -- showScan lives in here.
       document.getElementById('close-split').addEventListener('click', function(){ showScan(false); });
 
+      // A scan that was still in flight when this document ended. The restore above has already
+      // put the overlay back on the start pane, which on its own reads as the splitter having
+      // silently thrown the bill away; this is the sentence that makes it a thing that happened
+      // rather than a thing that broke. Runs after the restore because the camera lives down here.
+      if(S.scanning){
+        S.scanning = 0;
+        save();
+        fail('That scan was interrupted — your phone closed the page while the camera was open. Try again, or type the items in.');
+      }
+
       photo.addEventListener('change', function(){
         var file = photo.files && photo.files[0];
         if(!file || scanning) return;
         scanning = true;
         note.hidden = true;
+        // Persisted, because the interesting failure is the one where this document does not live
+        // to clear it: opening the camera on a page holding Tesseract's wasm is exactly when a
+        // phone discards the tab, and the reload lands back on the start pane with the photo
+        // never scanned and nothing said about it. That is what "it just went back to the split
+        // the bill screen" is, and without this flag there is nothing left to say it with.
+        S.scanning = 1;
+        save();
         // The shutter fires before the scanner appears -- it covers the swap, so the paper is
         // already there when the flash clears.
         if(!calm()){
@@ -2638,7 +2682,17 @@ ${
         // with no way out and no way to retry, so it needs a floor. 90s is well past a slow
         // phone's own recognise pass -- anything longer is not coming back.
         var dead = setTimeout(function(){
-          if(scanning){ scanning = false; fail('That took too long. Try again, or type the items in.'); }
+          if(!scanning) return;
+          scanning = false;
+          // Cleared here too, not only in the settled path below. Abandoning the scan without
+          // emptying the input meant re-picking the SAME photo fired no change event and did
+          // nothing whatsoever -- the diner taps Photograph the bill, the picker opens, they
+          // choose the bill again, and the page just sits on the start pane. Retrying the photo
+          // you have just been told to retry is the first thing anyone does.
+          photo.value = '';
+          S.scanning = 0;
+          save();
+          fail('That took too long. Try again, or type the items in.');
         }, 90000);
 
         var worker = null;
@@ -2695,6 +2749,8 @@ ${
           .then(function(){
             scanning = false;
             clearTimeout(dead);
+            S.scanning = 0;
+            save();
             // Cleared here, not on the way in: iOS invalidates the File's backing store when the
             // input that produced it is reset, and prep() reads the file well after that -- on the
             // first scan it waits on Tesseract's CDN first. Clearing after the read still leaves

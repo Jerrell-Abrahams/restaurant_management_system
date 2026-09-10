@@ -41,6 +41,15 @@ test('parseReceipt only digit-corrects the final token, never the name', () => {
   assert.deepStrictEqual(parseReceipt('Bos Salad     8O.5O'), [{ name: 'Bos Salad', cents: 8050 }]);
 });
 
+test('the digit fix still finds the price when a VAT code follows it', () => {
+  // The two failure modes compound: a slip that marks each amount is exactly the kind of thermal
+  // slip Tesseract reads 0 as O on, and aiming the fix at the last token pointed it at the code.
+  assert.deepStrictEqual(parseReceipt('Calamari   89.OO V\nCheesecake   65.OO *'), [
+    { name: 'Calamari', cents: 8900 },
+    { name: 'Cheesecake', cents: 6500 },
+  ]);
+});
+
 test('parseReceipt subtracts a deduction rather than adding it', () => {
   // Caught by the sign, not by a vocabulary of line names -- so a comp nobody thought to list
   // still comes through as a deduction. See COMPLIANCE.md rule 3 for why the words stay out.
@@ -64,6 +73,72 @@ test('a deduction still reconciles against the printed total', () => {
   assert.strictEqual(r.unaccounted, 0);
   assert.deepStrictEqual(r.perPerson, [17500, -2500]);
   assert.strictEqual(sum(r.perPerson), r.grandTotal);
+});
+
+test('a quantity column does not glue itself onto the price', () => {
+  // The bug this exists for: a space was allowed to group any number of digits, so the qty column
+  // most tills print ran straight into the rands. Every one of these came back plausible, roughly
+  // bill-shaped and wrong, which is the kind nobody catches at the table -- R38.00 became R238.00
+  // and R189.00 became R2189.00. A separator now has to group exactly three digits to be one.
+  assert.deepStrictEqual(parseReceipt([
+    'Cappuccino          2      38.00',
+    'Beef Burger         2     189.00',
+    'Chicken Wings       1      79.00',
+  ].join('\n')).map((i) => i.cents), [3800, 18900, 7900]);
+
+  // The unit-price-and-line-total layout: the LAST amount on the line is what is owed.
+  assert.strictEqual(parseReceipt('Coke   2   12.50   25.00')[0].cents, 2500);
+});
+
+test('a VAT code or an asterisk after the amount does not drop the line', () => {
+  // Pinning the price hard to the end of the line silently discarded every line a till marks up,
+  // and a dropped line is invisible: the diner cannot delete a row that never arrived, and a bill
+  // where every line is marked comes back empty and reads as "the scanner is broken".
+  assert.deepStrictEqual(parseReceipt([
+    'Cheesecake   65.00 *',
+    'Sirloin 250g   215.00 V',
+    'Espresso   28.00A',
+  ].join('\n')), [
+    { name: 'Cheesecake', cents: 6500 },
+    { name: 'Sirloin 250g', cents: 21500 },
+    { name: 'Espresso', cents: 2800 },
+  ]);
+});
+
+test('a doubled VAT glyph does not drop the line', () => {
+  // Not hypothetical: `npm run browser` reads a lone "V" off the rendered slip as "Vv" on about
+  // half the lines, and a one-character marker allowance silently dropped every one of them --
+  // two dishes of four, gone, with the diner given no sign a line was ever there. Three characters
+  // covers the doubling and the two-letter codes tills actually print.
+  assert.deepStrictEqual(parseReceipt([
+    '1    Calamari             89.00 V',
+    '1    Buffalo Wings        75.00 Vv',
+    '1    Beef Burger         120.00 V',
+    '1    Still Water          25.50 Vv',
+    'TOTAL                    309.50',
+  ].join('\n')).map((i) => i.cents), [8900, 7500, 12000, 2550]);
+
+  // The marker stays digit-free, so a line total after a unit price is still the amount owed
+  // rather than something a wider marker swallowed.
+  assert.strictEqual(parseReceipt('Coke   2   12.50   25.00 V')[0].cents, 2500);
+});
+
+test('a dish that opens on a till word is still a dish', () => {
+  // NOISE matched the start of the name, so these three were thrown away as totals. A till label
+  // is the keyword and at most one word after it; anything longer is somebody's dinner.
+  assert.deepStrictEqual(parseReceipt([
+    'Table Mountain Platter   320.00',
+    'Service Station Burger    95.00',
+    'Cashew Nut Salad          78.00',
+    'Subtotal                 493.00',
+    'Service charge            49.30',
+    'VAT @ 15%                 73.95',
+    'TOTAL                    616.25',
+  ].join('\n')), [
+    { name: 'Table Mountain Platter', cents: 32000 },
+    { name: 'Service Station Burger', cents: 9500 },
+    { name: 'Cashew Nut Salad', cents: 7800 },
+  ]);
 });
 
 test('parseReceipt handles thousands separators without losing the rands', () => {

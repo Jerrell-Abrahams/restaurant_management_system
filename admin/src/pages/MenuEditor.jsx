@@ -14,8 +14,8 @@ import { Skeleton } from '../components/ui/Skeleton';
 import { cn } from '../components/ui/cn';
 import { HoursEditor, isPaused } from '../components/HoursEditor';
 import { ALLERGENS, ALLERGEN_LABELS } from '../lib/dietary';
+import { rands } from '../lib/money';
 
-const rands = (cents) => (cents === null || cents === undefined ? '' : `R${(cents / 100).toFixed(2)}`);
 const MAX_VARIANTS = 4; // Matches src/lib/variants.js and the check constraint in db/menu_variants.sql.
 const MAX_ADD_ONS = 6; // Same, against db/menu_addons.sql.
 // Sizes win the list row's price column when a dish has them -- the range is what the owner is

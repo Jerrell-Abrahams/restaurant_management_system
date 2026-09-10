@@ -63,6 +63,20 @@ async function purgeScans(now = Date.now()) {
   if (error) throw new Error(`scan purge failed: ${error.message}`);
 }
 
+// Longer than a scan because an order is a business record -- "what did we sell last month" is a
+// question an owner asks, and a scan is not. Still bounded: nothing here is a legal archive, and
+// the table grows per plate rather than per visit.
+//
+// Also unlike a scan, an order carries nothing personal at all -- a table number is not a person
+// -- so this window is about table size, not POPIA. order_items cascades on delete.
+const ORDER_RETENTION_DAYS = 90;
+
+async function purgeOrders(now = Date.now()) {
+  const cutoff = new Date(now - ORDER_RETENTION_DAYS * 86400000).toISOString();
+  const { error } = await db.from('orders').delete().lt('created_at', cutoff);
+  if (error) throw new Error(`order purge failed: ${error.message}`);
+}
+
 // The backstop for the one case the on-submit debounce misses: a burst whose final bad rating
 // lands inside the fifteen-minute window and is never followed by another submission, so nothing
 // ever triggers the send. Calling maybeAlert here is safe and idempotent -- it debounces and
@@ -125,6 +139,15 @@ router.get('/daily', async (req, res) => {
     await purgeScans();
   } catch (err) {
     console.error('[cron] scan purge failed:', err.message);
+  }
+
+  // Its own try, not folded into the one above: an ordering restaurant losing its scan purge
+  // because a purge it does not even use threw is the kind of coupling that makes one bad night
+  // two bad nights.
+  try {
+    await purgeOrders();
+  } catch (err) {
+    console.error('[cron] order purge failed:', err.message);
   }
 
   // Keeps the Supabase free tier from pausing after seven idle days. A live restaurant's coasters

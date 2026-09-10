@@ -414,6 +414,92 @@ const api = (token) => async (method, path, body) => {
   check('re-upload overwrites the existing pair', r.status === 204, `got ${r.status}`);
 
   console.log('');
+  console.log('== orders ==');
+  // The whole ordering surface exists on the other side of restaurant.place_order(), a plpgsql
+  // function `npm test` cannot reach at all -- it is the only place prices are decided, and if it
+  // ever trusts the phone, dinner costs a cent. Everything below runs against real Postgres.
+  const orderPath = `/api/public/${slug}/order`;
+  const dinerPost = (path, body) => fetch(`${BASE}${path}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  }).then(async (res) => ({ status: res.status, body: await res.json().catch(() => ({})) }));
+
+  // Both flags off by default, and ordering must not switch on without service requests.
+  let ord = await dinerPost(orderPath, { table: '9', lines: [{ menu_item_id: itemCalamari, qty: 1 }] });
+  check('ordering off = 404, indistinguishable from a wrong slug', ord.status === 404, `got ${ord.status}`);
+
+  await call('PATCH', `/api/admin/restaurants/${restaurantId}`, { serviceRequests: true, ordering: true });
+
+  // A cart that claims the calamari costs a cent. The prices below are the MENU's, and that gap is
+  // the single most important assertion in this section.
+  ord = await dinerPost(orderPath, {
+    table: 'Table 9',
+    lines: [
+      { menu_item_id: itemCalamari, qty: 2, price_cents: 1, name: 'Calamari' },
+      { menu_item_id: itemRibs, qty: 1, unit_cents: 1 },
+    ],
+  });
+  check('order accepted', ord.status === 200 && !!ord.body.id, `got ${ord.status} ${ord.body.error || ''}`);
+  const orderId = ord.body.id;
+
+  if (orderId) {
+    const row = await db.from('orders').select('*').eq('id', orderId).single();
+    const linesRes = await db.from('order_items').select('*').eq('order_id', orderId).order('position');
+    const want = 8900 * 2 + 18950;
+    check('total is the menu price, not the price the phone sent', row.data?.total_cents === want,
+      `got ${row.data?.total_cents}, menu says ${want}`);
+    check('both lines landed', linesRes.data?.length === 2, `got ${linesRes.data?.length}`);
+    check('the line snapshots the dish name', linesRes.data?.[0]?.name_snapshot === 'Calamari');
+    check('unit_cents ignored the R0.01 claim', linesRes.data?.[0]?.unit_cents === 8900,
+      `got ${linesRes.data?.[0]?.unit_cents}`);
+    check('order starts pending', row.data?.status === 'pending', row.data?.status);
+    // COMPLIANCE.md 5, same as every other diner submission.
+    check('ip_hash recorded on the order', !!row.data?.ip_hash);
+
+    const polled = await fetch(`${BASE}${orderPath}/${orderId}`).then((res) => res.json());
+    check('the phone can poll its own order', polled.status === 'pending' && polled.total_cents === want);
+  }
+
+  // "9" and "Table 9" are the same table to a diner, and the dedupe index lowercases the label the
+  // sanitiser already stripped -- so this must collide with the order placed above.
+  const dupe = await dinerPost(orderPath, { table: '9', lines: [{ menu_item_id: itemRibs, qty: 1 }] });
+  check('a second order from the same table is refused, not silently merged', dupe.status === 409,
+    `got ${dupe.status}`);
+
+  // The sold-out burger. The whole order must roll back -- a partial insert is someone not getting
+  // food they believe they ordered.
+  const gone = await dinerPost(orderPath, {
+    table: '11', lines: [{ menu_item_id: itemCalamari, qty: 1 }, { menu_item_id: itemBurger, qty: 1, name: 'Sold Out Burger' }],
+  });
+  check('a sold-out dish is refused by name', gone.status === 409 && /sold out/i.test(gone.body.error || ''),
+    gone.body.error || `got ${gone.status}`);
+  const { count: orphaned } = await db.from('orders').select('*', { count: 'exact', head: true })
+    .eq('restaurant_id', restaurantId).eq('table_label', '11');
+  check('the refused order rolled back completely', orphaned === 0, `found ${orphaned} order(s)`);
+
+  // A dish from another restaurant's menu, ordered by id. place_order joins through categories, so
+  // this must miss -- otherwise any slug can order from any menu.
+  const foreign = await dinerPost(orderPath, {
+    table: '12', lines: [{ menu_item_id: '00000000-0000-0000-0000-000000000001', qty: 1 }],
+  });
+  check("a dish id that isn't on this menu is refused", foreign.status === 409, `got ${foreign.status}`);
+
+  if (orderId) {
+    let cancel = await fetch(`${BASE}${orderPath}/${orderId}`, { method: 'DELETE' });
+    check('the diner can cancel while it is still pending', cancel.status === 200, `got ${cancel.status}`);
+
+    const again = await dinerPost(orderPath, { table: '9', lines: [{ menu_item_id: itemRibs, qty: 1 }] });
+    await db.from('orders').update({ status: 'accepted' }).eq('id', again.body.id);
+    cancel = await fetch(`${BASE}${orderPath}/${again.body.id}`, { method: 'DELETE' });
+    check('once the kitchen has it, the diner cannot cancel', cancel.status === 404, `got ${cancel.status}`);
+  }
+
+  // Switching waiter calls off must take ordering with it -- see routes/admin.js.
+  await call('PATCH', `/api/admin/restaurants/${restaurantId}`, { serviceRequests: false });
+  const both = await db.from('restaurants').select('ordering_enabled').eq('id', restaurantId).single();
+  check('turning service requests off turns ordering off too', both.data?.ordering_enabled === false,
+    JSON.stringify(both.data));
+
+  console.log('');
   console.log('== cron ==');
   let cronRes = await fetch(`${BASE}/api/cron/daily`);
   check('cron rejects an unauthenticated call', cronRes.status === 401, `got ${cronRes.status}`);

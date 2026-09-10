@@ -5,6 +5,7 @@ const { bySlug } = require('../lib/restaurants');
 const { renderPage } = require('../lib/dinerPage');
 const alerts = require('../lib/alerts');
 const { tableError, normalizeTable, isKind } = require('../lib/serviceRequests');
+const { normalizeLines, soldOutDish } = require('../lib/orders');
 
 // Postgres unique-violation. The dedupe index in service_requests.sql fires when this table
 // already has an open request of this kind -- see the route below for why that is a success, not
@@ -358,6 +359,98 @@ router.delete('/api/public/:slug/service-request/:id', async (req, res) => {
     .maybeSingle();
   if (error) return res.status(500).json({ error: error.message });
   if (!data) return res.status(404).json({ error: 'Already taken care of' });
+  res.json({ ok: true });
+});
+
+// --- Orders --------------------------------------------------------------------------------
+
+// The tier above service requests. Both flags are required: ordering with no way to call a waiter
+// when something is wrong is not a thing we sell, and a restaurant that switches waiter calls off
+// for a busy Saturday means it for the whole floor. 404 rather than a feature-specific error, for
+// the same reason the service-request route does it -- the menu is cached 60s at a shared edge, so
+// a phone can be holding a page whose cart outlives the toggle, and nothing about the response
+// should tell a crafted request which of the two flags it tripped.
+const canOrder = (ctx) =>
+  ctx && ctx.restaurant.service_requests_enabled && ctx.restaurant.ordering_enabled;
+
+router.post('/api/public/:slug/order', async (req, res) => {
+  const ctx = await bySlug(req.params.slug);
+  if (!canOrder(ctx)) return res.status(404).json({ error: 'Not found' });
+
+  const table = normalizeTable(req.body.table);
+  const badTable = tableError(table);
+  if (badTable) return res.status(400).json({ error: badTable });
+
+  const { lines, error: badLines } = normalizeLines(req.body.lines);
+  if (badLines) return res.status(400).json({ error: badLines });
+
+  // One call, one transaction. The order and its lines land together or not at all -- two client
+  // calls with cleanup on failure would put an order with no lines on the pass the moment the
+  // second one failed, and the pass has no way to tell that from a real empty order.
+  //
+  // Every price is resolved inside that transaction from menu_items. Nothing the phone sent about
+  // money is even present in the payload (see lib/orders.js).
+  const { data: orderId, error } = await db.rpc('place_order', {
+    p_restaurant_id: ctx.restaurant.id,
+    p_table_label: table,
+    p_lines: lines,
+    p_ip_hash: hashIp(req), // COMPLIANCE.md 5: abuse detection, never displayed or exported
+  });
+
+  if (error) {
+    // The dedupe index fired: this table already has an order waiting for a human. Unlike a waiter
+    // call, this is NOT indistinguishable from success -- the second order may be a real second
+    // round with different food, and silently answering ok would lose it. Say so plainly.
+    if (error.code === DUPLICATE) {
+      return res.status(409).json({ error: 'Your table already has an order waiting. Give it a minute.' });
+    }
+    // A dish went off the menu between the phone rendering it and Send. Name it, so the diner can
+    // take that one line off rather than being told "something went wrong" about a whole order.
+    const goneDish = soldOutDish(error.message);
+    if (goneDish) {
+      return res.status(409).json({ error: `${goneDish} just sold out. Take it off and send again.`, soldOut: goneDish });
+    }
+    return res.status(500).json({ error: error.message });
+  }
+
+  res.json({ ok: true, id: orderId });
+});
+
+// The phone polls this so it can say Sent -> Accepted. Without it a diner assumes Send failed and
+// sends again, which is the failure that gets the whole feature switched off. Same trust model as
+// the service-request routes: knowing a 128-bit id is the credential, because there is no diner
+// account to hang one on.
+router.get('/api/public/:slug/order/:id', async (req, res) => {
+  const ctx = await bySlug(req.params.slug);
+  if (!canOrder(ctx)) return res.status(404).json({ error: 'Not found' });
+
+  const { data, error } = await db
+    .from('orders')
+    .select('id, status, total_cents, created_at')
+    .eq('id', req.params.id)
+    .eq('restaurant_id', ctx.restaurant.id)
+    .maybeSingle();
+  if (error) return res.status(500).json({ error: error.message });
+  if (!data) return res.status(404).json({ error: 'Not found' });
+  res.json(data);
+});
+
+// Cancel while nobody has picked it up. Once staff accept, the kitchen may already be cooking, so
+// the diner talks to a person -- which is the right answer in a restaurant and costs no code.
+router.delete('/api/public/:slug/order/:id', async (req, res) => {
+  const ctx = await bySlug(req.params.slug);
+  if (!canOrder(ctx)) return res.status(404).json({ error: 'Not found' });
+
+  const { data, error } = await db
+    .from('orders')
+    .delete()
+    .eq('id', req.params.id)
+    .eq('restaurant_id', ctx.restaurant.id)
+    .eq('status', 'pending')
+    .select('id')
+    .maybeSingle();
+  if (error) return res.status(500).json({ error: error.message });
+  if (!data) return res.status(404).json({ error: 'The kitchen already has that one' });
   res.json({ ok: true });
 });
 

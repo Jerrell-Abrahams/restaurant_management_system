@@ -124,6 +124,13 @@ router.patch('/restaurants/:id', async (req, res) => {
   // Owner's own floor operation, not admin-gated -- same reasoning as address/hours above: the
   // failure mode of a wrong value here is "the buttons are on or off", not a wrong review link.
   if ('serviceRequests' in req.body) patch.service_requests_enabled = !!req.body.serviceRequests;
+  // Ordering sits above service requests, so switching waiter calls off takes ordering with it.
+  // Enforced here rather than only in the UI: the two flags are re-checked together on every
+  // order (routes/public.js canOrder), and leaving a restaurant with ordering on and no way to
+  // call a waiter about a wrong order is a floor state nobody should be able to reach by
+  // un-ticking one box.
+  if ('ordering' in req.body) patch.ordering_enabled = !!req.body.ordering;
+  if (patch.service_requests_enabled === false) patch.ordering_enabled = false;
   // Null = staff dismiss only. See service_request_auto_dismiss.sql for why a number reaches the
   // display through the poll rather than a new cron.
   if ('autoDismissMinutes' in req.body) {
@@ -710,6 +717,77 @@ router.patch('/restaurants/:id/service-requests/:requestId', async (req, res) =>
     .maybeSingle();
   if (error) return res.status(500).json({ error: error.message });
   if (!data) return res.status(404).json({ error: 'Request not found' });
+  res.status(204).end();
+});
+
+// --- Orders --------------------------------------------------------------------------------
+
+// One route serves both readers, because they want the same rows at different windows: the pass
+// polls ?live=1 every 5s for what is still open, and the console's Orders tab asks for a day. A
+// second endpoint would be the same join written twice.
+router.get('/restaurants/:id/orders', async (req, res) => {
+  const ctx = await resolve(req, res);
+  if (!ctx) return;
+
+  // The lines come back nested. PostgREST can do this in one round trip, and the alternative --
+  // fetch orders, then fetch items in a second query keyed on the ids -- is two trips and a
+  // client-side regroup for a screen that refreshes every five seconds.
+  let query = db
+    .from('orders')
+    .select('id, table_label, status, total_cents, created_at, accepted_at, done_at, '
+      + 'order_items(name_snapshot, variant_label, add_ons, unit_cents, qty, line_cents, position)')
+    .eq('restaurant_id', ctx.restaurant.id);
+
+  if (req.query.live) {
+    // Anything a human still owes something to. `done` drops off the pass the moment it is tapped.
+    query = query.in('status', ['pending', 'accepted']).order('created_at');
+  } else {
+    // Fixed 24h window for the console, matching what an owner means by "today's orders" during a
+    // shift that runs past midnight. Longer ranges belong with the 30-day analytics, not here.
+    query = query
+      .gte('created_at', new Date(Date.now() - 86400000).toISOString())
+      .order('created_at', { ascending: false });
+  }
+
+  const { data, error } = await query;
+  if (error) return res.status(500).json({ error: error.message });
+  // Postgres has no ordering guarantee on an embedded select, and a bill whose lines come back
+  // shuffled reads as a different order every poll.
+  for (const order of data) (order.order_items || []).sort((a, b) => a.position - b.position);
+  res.json(data);
+});
+
+// The tap that matters. pending -> accepted is the moment the kitchen owns the food; accepted ->
+// done clears the card. Both are one-way: nothing here un-accepts an order, because the kitchen
+// cannot un-cook it and a screen that disagrees with the pass is worse than no screen.
+router.patch('/restaurants/:id/orders/:orderId', async (req, res) => {
+  const ctx = await resolve(req, res);
+  if (!ctx) return;
+
+  const status = req.body.status;
+  if (status !== 'accepted' && status !== 'done') {
+    return res.status(400).json({ error: 'status must be accepted or done' });
+  }
+
+  const patch = status === 'accepted'
+    ? { status, accepted_at: new Date().toISOString(), accepted_by: req.user.id }
+    : { status, done_at: new Date().toISOString() };
+
+  // Scoped to the state it is allowed to leave, so two staff tapping Accept at the same moment
+  // cannot both write -- the second finds no row and gets a clean 404 rather than overwriting the
+  // first one's name and timestamp.
+  const from = status === 'accepted' ? 'pending' : 'accepted';
+
+  const { data, error } = await db
+    .from('orders')
+    .update(patch)
+    .eq('id', req.params.orderId)
+    .eq('restaurant_id', ctx.restaurant.id)
+    .eq('status', from)
+    .select('id')
+    .maybeSingle();
+  if (error) return res.status(500).json({ error: error.message });
+  if (!data) return res.status(404).json({ error: 'Someone got there first' });
   res.status(204).end();
 });
 

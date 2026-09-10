@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate, useParams } from 'react-router-dom';
-import { LayoutDashboard, MessageSquare, UtensilsCrossed, TrendingDown, QrCode, SlidersHorizontal, LogOut, Menu as MenuIcon, Sun, Moon, ChevronsUpDown, ExternalLink, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, UtensilsCrossed, TrendingDown, QrCode, SlidersHorizontal, LogOut, Menu as MenuIcon, Sun, Moon, ChevronsUpDown, ExternalLink, BarChart3, ClipboardList } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../lib/theme';
@@ -13,6 +13,7 @@ import { cn } from './ui/cn';
 const nav = [
   { to: '', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: 'feedback', label: 'Feedback', icon: MessageSquare, badge: true },
+  { to: 'orders', label: 'Orders', icon: ClipboardList, ordering: true },
   { to: 'menu', label: 'Menu', icon: UtensilsCrossed },
   { to: 'dishes', label: 'Dishes', icon: TrendingDown },
   { to: 'analytics', label: 'Analytics', icon: BarChart3 },
@@ -83,7 +84,10 @@ export function Layout() {
         )}
       </div>
 
-      {nav.map(({ to, label, icon: Icon, end, badge }) => (
+      {/* Orders is the one tab that is not universal. Hidden rather than shown-and-empty: a tab
+          for a tier a restaurant is not on is a support call, and an empty Orders list on a busy
+          night reads as "the system lost my orders" rather than "you do not have this". */}
+      {nav.filter((n) => !n.ordering || restaurant?.ordering_enabled).map(({ to, label, icon: Icon, end, badge }) => (
         <NavLink
           key={label}
           to={to ? `/r/${restaurantId}/${to}` : `/r/${restaurantId}`}

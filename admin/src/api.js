@@ -56,6 +56,15 @@ export const getServiceRequests = (id) => get(`/api/admin/restaurants/${id}/serv
 export const ackServiceRequest = (id, requestId) =>
   patch(`/api/admin/restaurants/${id}/service-requests/${requestId}`, {});
 
+// live=1 is what the pass polls: everything still pending or accepted. Without it the route
+// answers the last 24h, which is the console's Orders tab.
+export const getOrders = (id, live = false) =>
+  get(`/api/admin/restaurants/${id}/orders${live ? '?live=1' : ''}`);
+// status is 'accepted' (the kitchen now owns it) or 'done' (clear the card). One-way, both of
+// them -- the route refuses a transition from any other state.
+export const setOrderStatus = (id, orderId, status) =>
+  patch(`/api/admin/restaurants/${id}/orders/${orderId}`, { status });
+
 // Admin only. Both files go up together -- the API rejects a half pair, because an SVG from one
 // restaurant sitting next to another's PNG is the failure that reaches a printer.
 export const uploadQr = (id, body) => request(`/api/admin/restaurants/${id}/qr`, { method: 'PUT', body: JSON.stringify(body) });

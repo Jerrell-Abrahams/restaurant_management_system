@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import * as api from '../api';
 import { IconButton } from '../components/ui/Button';
 import { cn } from '../components/ui/cn';
+import { rands } from '../lib/money';
 
 // Design: "Waiter Call Board", variant 1A -- ticket wall, sized for a monitor read from a few
 // metres away. Cards go from calm to loud: only the single longest-waiting request gets the
@@ -78,12 +79,20 @@ export function Display() {
   forcedMuteRef.current = forcedMute;
   const seen = useRef(null); // null until the first poll lands
   const nudged = useRef(null); // id -> last nudged_at reacted to, null until the first poll lands
+  // Orders only exist on the tier above. A restaurant without it must get exactly the screen it
+  // had before this feature -- no empty column, no second heading, no extra request every 5s.
+  const [ordering, setOrdering] = useState(false);
+  const orderingRef = useRef(false);
+  orderingRef.current = ordering;
+  const [orders, setOrders] = useState([]);
+  const seenOrders = useRef(null);
 
   useEffect(() => {
     api.getRestaurant(restaurantId).then((r) => {
       setName(r.name);
       setLogoUrl(r.logo_url || '');
       setForcedMute(!!r.service_requests_chime_muted);
+      setOrdering(!!r.ordering_enabled);
     }).catch(() => {});
   }, [restaurantId]);
 
@@ -117,6 +126,19 @@ export function Display() {
           seen.current = new Set(data.map((r) => r.id));
           nudged.current = new Map(data.map((r) => [r.id, r.nudged_at || null]));
           setRows(data);
+
+          // Same poll, same 5s, one extra request only where the tier is on. A new order chimes
+          // for the same reason a waiter call does -- nobody is watching the screen constantly --
+          // and seeds silently on the first response so opening the display mid-service is quiet.
+          if (orderingRef.current) {
+            const live = await api.getOrders(restaurantId, true);
+            if (stopped) return;
+            if (seenOrders.current && live.some((o) => !seenOrders.current.has(o.id))
+              && !mutedRef.current && !forcedMuteRef.current) chime();
+            seenOrders.current = new Set(live.map((o) => o.id));
+            setOrders(live);
+          }
+
           setLastPoll(Date.now());
           setFailing(false);
         } catch {
@@ -183,11 +205,28 @@ export function Display() {
     }
   }
 
+  // Optimistic, like ack() above: the tap has to look instant on a screen across a hot kitchen.
+  // A failed write refetches rather than trying to reverse the local edit -- the server is the
+  // only thing that knows whether another staff member got there first.
+  async function moveOrder(order, status) {
+    setOrders((cur) => (status === 'done'
+      ? cur.filter((o) => o.id !== order.id)
+      : cur.map((o) => (o.id === order.id ? { ...o, status } : o))));
+    try {
+      await api.setOrderStatus(restaurantId, order.id, status);
+    } catch (err) {
+      toast.error(err.message);
+      api.getOrders(restaurantId, true).then(setOrders).catch(() => {});
+    }
+  }
+
   const staleness = lastPoll ? Math.max(0, Math.round((Date.now() - lastPoll) / 1000)) : null;
   // Oldest first: the head of this list is the one card that gets the loud treatment below.
   const open = rows ? [...rows].sort((a, b) => new Date(a.created_at) - new Date(b.created_at)) : [];
   const waiterCount = open.filter((r) => r.kind === 'waiter').length;
   const billCount = open.filter((r) => r.kind === 'bill').length;
+  // Only pending is a number staff can act on. Accepted orders are already someone's problem.
+  const pendingOrders = orders.filter((o) => o.status === 'pending').length;
 
   return (
     <div className="flex min-h-screen flex-col bg-bg text-text">
@@ -237,6 +276,12 @@ export function Display() {
           <span className="font-serif text-[22px] font-medium text-ok sm:text-[26px]">{billCount}</span>
           <span className="text-[13px] text-muted">bill{billCount === 1 ? '' : 's'} wanted</span>
         </span>
+        {ordering && (
+          <span className="flex items-baseline gap-2">
+            <span className="font-serif text-[22px] font-medium text-text sm:text-[26px]">{pendingOrders}</span>
+            <span className="text-[13px] text-muted">order{pendingOrders === 1 ? '' : 's'} to accept</span>
+          </span>
+        )}
         <span className="ml-auto font-mono text-[12px] text-dim">
           {staleness === null ? 'Loading…' : `Updated ${staleness}s ago`}
         </span>
@@ -245,9 +290,47 @@ export function Display() {
       <main className="flex-1 p-4 sm:p-6">
         {rows === null ? (
           <p className="text-[13px] text-dim">Loading…</p>
-        ) : open.length === 0 && claimed.length === 0 ? (
+        ) : open.length === 0 && claimed.length === 0 && orders.length === 0 ? (
           <div className="flex min-h-[50vh] flex-col items-center justify-center gap-2">
             <p className="font-serif text-[44px] text-dim">All clear</p>
+          </div>
+        ) : ordering ? (
+          // Two columns only on the tier that has orders. Calls stay left where staff already look
+          // for them; orders get their own side because they are read rather than glanced at.
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-[3fr_2fr]">
+            <section className="flex flex-col gap-3">
+              <h2 className="font-mono text-[11px] uppercase tracking-[0.14em] text-dim">Floor calls</h2>
+              {open.length === 0 && claimed.length === 0 ? (
+                <p className="rounded-2xl border border-dashed border-border-2 p-6 text-center text-[13px] text-dim">
+                  Nobody waiting
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {open.map((r, i) => (
+                    <RequestCard key={r.id} row={r} urgent={i === 0} onAck={() => ack(r)} />
+                  ))}
+                  {claimed.map((r) => <ClaimedCard key={r.id} row={r} />)}
+                </div>
+              )}
+            </section>
+
+            <section className="flex flex-col gap-3">
+              <h2 className="font-mono text-[11px] uppercase tracking-[0.14em] text-dim">Orders</h2>
+              {orders.length === 0 ? (
+                <p className="rounded-2xl border border-dashed border-border-2 p-6 text-center text-[13px] text-dim">
+                  No orders in
+                </p>
+              ) : (
+                orders.map((o) => (
+                  <OrderCard
+                    key={o.id}
+                    order={o}
+                    onAccept={() => moveOrder(o, 'accepted')}
+                    onDone={() => moveOrder(o, 'done')}
+                  />
+                ))
+              )}
+            </section>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -273,6 +356,59 @@ export function Display() {
       >
         Powered by <strong>Complex AI</strong>
       </a>
+    </div>
+  );
+}
+
+// An order is read, not glanced at: the lines are the whole point, so this card is a list with a
+// table number on top rather than the one-number shout a waiter call gets. Pending is outlined and
+// carries the only button that matters; accepted goes quiet and keeps a smaller way to clear it.
+function OrderCard({ order, onAccept, onDone }) {
+  const pending = order.status === 'pending';
+  const lines = order.order_items || [];
+  return (
+    <div
+      className={cn('flex flex-col gap-3 rounded-2xl border p-5',
+        pending ? 'border-accent bg-raised' : 'border-border bg-panel')}
+    >
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="font-serif text-[30px] font-medium leading-none">Table {order.table_label}</span>
+        <span className="font-mono text-[15px] tabular-nums text-muted">{elapsedLabel(order.created_at)}</span>
+      </div>
+
+      <ul className="flex flex-col gap-1.5">
+        {lines.map((line, i) => (
+          <li key={i} className="flex items-baseline gap-2 text-[15px]">
+            <span className="min-w-[1.6rem] font-mono tabular-nums text-accent">{line.qty}&times;</span>
+            <span className="flex-1">
+              {line.name_snapshot}
+              {line.variant_label && <span className="text-muted"> &middot; {line.variant_label}</span>}
+              {(line.add_ons || []).map((a, j) => (
+                <span key={j} className="text-muted"> + {a.label}</span>
+              ))}
+            </span>
+            <span className="font-mono text-[13px] tabular-nums text-dim">
+              {rands(line.line_cents)}
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
+        <span className="font-mono text-[14px] tabular-nums text-muted">{rands(order.total_cents)}</span>
+        {pending ? (
+          <button
+            onClick={onAccept}
+            className="rounded-lg bg-accent px-4 py-2 text-[14px] font-semibold text-accent-ink"
+          >
+            Accept
+          </button>
+        ) : (
+          <button onClick={onDone} className="rounded-lg border border-border-2 px-4 py-2 text-[14px] text-muted">
+            Clear
+          </button>
+        )}
+      </div>
     </div>
   );
 }

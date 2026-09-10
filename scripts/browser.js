@@ -169,6 +169,44 @@ const LAYOUTS = {
   await s.send('Page.navigate', { url: PAGE });
   await sleep(1500);
 
+  console.log('\n== the cart, where the tier is on ==');
+  // Skipped rather than failed where ordering is off: this file runs against whatever slug you
+  // point it at, and most restaurants are not on the tier. The checks that matter are the two
+  // that cost money -- a cart that paints when it should not, and a Send that leaves no order.
+  if (!served.includes('data-ordering')) {
+    console.log('  SKIP  ordering is off for this restaurant');
+  } else {
+    const cart = JSON.parse(await s.evaluate(`(() => {
+      const btn = document.querySelector('.ord-add');
+      if (!btn) return JSON.stringify({ error: 'no Add button on an ordering page' });
+      btn.closest('details').open = true;
+      btn.click();
+      return JSON.stringify({
+        barPainted: getComputedStyle(document.getElementById('ord-bar')).display !== 'none',
+        summary: document.getElementById('ord-sum').textContent,
+      });
+    })()`));
+    check('adding a dish raises the cart bar', cart.barPainted === true && /R\d/.test(cart.summary || ''),
+      cart.error || cart.summary);
+
+    // [hidden] and a class collide at equal specificity here, and source order decides -- which
+    // is how the cancel button and the status line both painted on a page with no order in
+    // flight. Computed display is the only thing that catches that; the attribute was correct.
+    const painted = JSON.parse(await s.evaluate(`JSON.stringify({
+      cancel: getComputedStyle(document.getElementById('ord-cancel')).display,
+      state: getComputedStyle(document.getElementById('ord-state')).display,
+    })`));
+    check('cancel and status stay unpainted before an order exists',
+      painted.cancel === 'none' && painted.state === 'none',
+      `cancel:${painted.cancel} state:${painted.state}`);
+
+    // The cart must carry no money to the server. The total on screen is arithmetic for the
+    // diner to read; the bill is place_order() to decide.
+    check('the cart sends no price to the server',
+      !/price_cents|unit_cents/.test(served.slice(served.indexOf('ord-send'))),
+      'no price field in the cart payload');
+  }
+
   console.log('\n== prep() releases the decoded frame ==');
   const rel = JSON.parse(await s.evaluate(`new Promise((done) => {
     const img = new Image();

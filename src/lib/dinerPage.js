@@ -701,6 +701,37 @@ function squeeze(css) {
 // Once, at module load. renderPage runs on every scan.
 const STYLE_MIN = squeeze(STYLE);
 
+// Ordering-only CSS, kept out of STYLE and emitted as a second <style> only when the tier is on.
+// STYLE itself ships to every restaurant, so anything added there is paid for by the thousands
+// who cannot order -- and the base page is already the thing the wire ratchet is about.
+// Everything here that could reuse an existing class does: the sheet is .overlay, the buttons
+// are .btn and .cta-btn, the input is .field.
+const ORDER_CSS_MIN = squeeze(`
+.ord-add{width:100%;margin-top:12px;padding:11px;border:1px solid var(--line);border-radius:9px;
+  background:none;color:var(--text);font:inherit;font-size:14px;cursor:pointer}
+.ord-add[data-in]{border-color:var(--accent);color:var(--accent)}
+.ord-bar{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;align-items:center;
+  gap:12px;padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+  background:var(--card);border-top:1px solid var(--line)}
+.ord-bar b{font-weight:400;font-size:15px}
+.ord-bar .btn{margin:0;width:auto;padding:10px 18px}
+.ord-sum{flex:1;color:var(--muted);font-size:13px}
+.ord-line{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.ord-line .nm{flex:1;font-size:15px}
+.ord-line .amt{font-size:14px;color:var(--muted);min-width:74px;text-align:right}
+.ord-qty{display:flex;align-items:center;gap:8px}
+.ord-qty button{width:32px;height:32px;border:1px solid var(--line);border-radius:8px;
+  background:none;color:var(--text);font:inherit;font-size:17px;line-height:1;cursor:pointer}
+.ord-qty span{min-width:18px;text-align:center;font-size:15px}
+.ord-total{display:flex;justify-content:space-between;padding:14px 0 4px;font-size:16px}
+/* [hidden] is display:none at the same specificity as every class above, so source order
+   decides -- and these rules come later, which quietly un-hides the bar on an empty cart and
+   the cancel button on a page with no order in flight. An id beats both. */
+#ord-bar[hidden],#ord-send[hidden],#ord-state[hidden],#ord-cancel[hidden]{display:none}
+.ord-state{margin:10px 0 0;padding:11px;border-radius:9px;background:var(--raised);
+  color:var(--muted);font-size:14px;text-align:center}
+`);
+
 // The inline <script> below is deliberately NOT put through this. Minifying JS with a regex is
 // how you ship a page that breaks on one phone and nothing else -- ASI, a `//` inside a string,
 // a regex literal.
@@ -770,7 +801,7 @@ const ICON_SPLIT =
 
 // `i` arrives free from Array#map. It only feeds the entrance stagger, capped because past the
 // eighth dish nobody is watching the load animation any more.
-function renderItem(item, i) {
+function renderItem(item, i, ordering) {
   const stagger = `--i:${Math.min(i || 0, 8)}`;
   const price = formatCents(item.price_cents);
   // Name, description, size labels and add-on labels all feed the search box. Someone hunting
@@ -885,6 +916,9 @@ function renderItem(item, i) {
         <button class="confirm-btn" type="button">Confirm</button>
       </div></div>
     </div>
+    ${ordering && item.price_cents !== null && item.price_cents !== undefined
+      ? `<button class="ord-add" type="button" data-add="${esc(item.id)}" data-price="${item.price_cents}" data-dish="${esc(item.name)}">Add to order &middot; ${price}</button>`
+      : ''}
   </div>
 </details>`;
 }
@@ -975,11 +1009,18 @@ function renderPage({ restaurant, menu, preview }) {
   // one dinerPage.test.js pins to prove no rating can ever reach this function.
   const serviceEnabled = !!restaurant.service_requests_enabled;
 
+  // The tier above. Same rule as serviceEnabled: off by default, and when off not one byte of the
+  // Add buttons, the cart, its CSS or its script reaches the phone -- which is what keeps the base
+  // page inside its own wire budget while an ordering page gets a larger one of its own.
+  // Requires serviceEnabled too: routes/public.js refuses an order without it, and a cart that
+  // 404s on Send is worse than no cart.
+  const orderingEnabled = serviceEnabled && !!restaurant.ordering_enabled;
+
   const sections = cats
     .map(
       (c, i) => `<section data-cat="${i}" data-hours="${esc(JSON.stringify(c.hours || null))}">
   <h2 class="cat">${esc(c.name)}<span class="cat-note" hidden></span></h2>
-  <div class="list">${c.items.map(renderItem).join('')}</div>
+  <div class="list">${c.items.map((it, n) => renderItem(it, n, orderingEnabled)).join('')}</div>
 </section>`
     )
     .join('');
@@ -1034,14 +1075,14 @@ function renderPage({ restaurant, menu, preview }) {
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500&family=Jost:wght@300;400&display=swap">
-<style>${STYLE_MIN}</style>
+<style>${STYLE_MIN}</style>${orderingEnabled ? `<style>${ORDER_CSS_MIN}</style>` : ''}
 ${themeCss(restaurant.brand_hue)}
 <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
 </head>
 <body data-slug="${esc(restaurant.slug)}"
       data-hours="${esc(JSON.stringify(restaurant.hours || null))}"
       data-closed-note="${esc(restaurant.closed_note || '')}"
-      ${serviceEnabled ? 'data-service' : ''}>
+      ${serviceEnabled ? 'data-service' : ''}${orderingEnabled ? ' data-ordering' : ''}>
 <header>
   <div class="head-row">
     <div class="head-id">
@@ -1072,6 +1113,26 @@ ${hasFilters ? '<p class="empty" id="no-hits" hidden>Nothing on the menu matches
     <button class="cta-btn" type="button" id="open-visit"><span class="cta-star" aria-hidden="true">★</span><span class="label">Rate us</span></button>
   </div>
 </footer>
+
+${orderingEnabled ? `
+<div class="ord-bar" id="ord-bar" hidden>
+  <span class="ord-sum" id="ord-sum"></span>
+  <button class="btn" type="button" id="ord-open">View order</button>
+</div>
+<div class="overlay" id="ord-sheet" hidden role="dialog" aria-modal="true" aria-labelledby="ord-h">
+  <button class="close" type="button" id="ord-close" aria-label="Close">✕</button>
+  <div>
+    <h2 id="ord-h">Your order</h2>
+    <div id="ord-lines"></div>
+    <div class="ord-total"><span>Total</span><b id="ord-total"></b></div>
+    <label class="lbl" for="ord-table">Which table are you at?</label>
+    <input class="field" id="ord-table" type="text" inputmode="numeric" maxlength="12"
+           autocomplete="off" placeholder="12" aria-label="Table number">
+    <button class="btn" type="button" id="ord-send" disabled>Send to the kitchen</button>
+    <p class="ord-state" id="ord-state" hidden></p>
+    <button class="btn-quiet" type="button" id="ord-cancel" hidden>Cancel this order</button>
+  </div>
+</div>`: ''}
 
 ${
   // Reuses the .overlay pattern below rather than a bespoke prompt: it is already themed for both
@@ -2646,7 +2707,149 @@ ${
       });
     })();
   })();
+${orderingEnabled ? `
+(function(){
+  // The cart. Lines are { id, name, cents, qty } -- a price is carried ONLY to show the
+  // diner a running total. It is never sent: place_order() re-reads every cent from the
+  // menu, so a tampered number here changes what this phone displays and nothing else.
+  var KEY = 'cart:' + slug, LIVE = 'order:' + slug;
+  var bar = document.getElementById('ord-bar'), sheet = document.getElementById('ord-sheet');
+  var linesEl = document.getElementById('ord-lines'), totalEl = document.getElementById('ord-total');
+  var tableEl = document.getElementById('ord-table'), sendBtn = document.getElementById('ord-send');
+  var stateEl = document.getElementById('ord-state'), cancelBtn = document.getElementById('ord-cancel');
+  // Own formatter -- the splitter's money() is two scopes deeper and returns no R.
+  function money(c){ return 'R' + (c / 100).toFixed(2); }
+  var cart = [], liveId = null, poll = null;
+
+  function load(){
+    try { cart = JSON.parse(localStorage.getItem(KEY) || '[]') || []; } catch(e){ cart = []; }
+    try { liveId = localStorage.getItem(LIVE) || null; } catch(e){ liveId = null; }
+  }
+  function save(){
+    try {
+      localStorage.setItem(KEY, JSON.stringify(cart));
+      if(liveId) localStorage.setItem(LIVE, liveId); else localStorage.removeItem(LIVE);
+    } catch(e){}
+  }
+  function total(){
+    var t = 0; for(var i=0;i<cart.length;i++) t += cart[i].cents * cart[i].qty; return t;
+  }
+  function count(){
+    var n = 0; for(var i=0;i<cart.length;i++) n += cart[i].qty; return n;
+  }
+
+  function draw(){
+    var n = count();
+    // The bar is the only entry point, so it stays up while an order is in flight even
+    // with an empty cart -- otherwise the diner has no way back to the status.
+    bar.hidden = !n && !liveId;
+    document.getElementById('ord-sum').textContent = liveId && !n
+      ? 'Order sent' : n + (n === 1 ? ' item \u00b7 ' : ' items \u00b7 ') + money(total());
+    linesEl.innerHTML = '';
+    cart.forEach(function(line, i){
+      var row = document.createElement('div'); row.className = 'ord-line';
+      var nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = line.name;
+      var qty = document.createElement('span'); qty.className = 'ord-qty';
+      var less = document.createElement('button'); less.type = 'button'; less.textContent = '\u2212';
+      less.setAttribute('aria-label', 'One fewer ' + line.name);
+      var num = document.createElement('span'); num.textContent = line.qty;
+      var more = document.createElement('button'); more.type = 'button'; more.textContent = '+';
+      more.setAttribute('aria-label', 'One more ' + line.name);
+      less.onclick = function(){ if(--line.qty < 1) cart.splice(i,1); save(); draw(); };
+      // 20 matches the per-line cap place_order() enforces, so the button stops where the
+      // database would have refused rather than letting Send fail on something fixable here.
+      more.onclick = function(){ if(line.qty < 20) line.qty++; save(); draw(); };
+      qty.appendChild(less); qty.appendChild(num); qty.appendChild(more);
+      var amt = document.createElement('span'); amt.className = 'amt';
+      amt.textContent = money(line.cents * line.qty);
+      row.appendChild(nm); row.appendChild(qty); row.appendChild(amt);
+      linesEl.appendChild(row);
+    });
+    totalEl.textContent = money(total());
+    sendBtn.disabled = !cart.length || !tableEl.value.trim() || !!liveId;
+    sendBtn.hidden = !!liveId;
+  }
+
+  function status(text, canCancel){
+    stateEl.hidden = false; stateEl.textContent = text;
+    cancelBtn.hidden = !canCancel;
+  }
+
+  // Polls only while an order is live. Stops on accepted -- there is nothing after it the
+  // diner can act on, and a phone left on a table should not poll all evening.
+  function watch(){
+    if(poll) clearInterval(poll);
+    if(!liveId) return;
+    var tick = function(){
+      fetch('/api/public/' + encodeURIComponent(slug) + '/order/' + liveId)
+        .then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(o){
+          if(!o){ liveId = null; save(); clearInterval(poll); stateEl.hidden = true; draw(); return; }
+          if(o.status === 'pending'){ status('Sent. Waiting for the kitchen to take it.', true); }
+          else {
+            status('The kitchen has your order.', false);
+            clearInterval(poll);
+            // Cleared here rather than on send: the cart IS the order until somebody
+            // accepts it, and a diner who cancels gets their lines back untouched.
+            cart = []; liveId = null; save(); draw();
+          }
+        })
+        .catch(function(){});
+    };
+    tick(); poll = setInterval(tick, 5000);
+  }
+
+  document.addEventListener('click', function(e){
+    var add = e.target.closest && e.target.closest('.ord-add');
+    if(!add) return;
+    var id = add.getAttribute('data-add');
+    var found = null;
+    for(var i=0;i<cart.length;i++) if(cart[i].id === id) found = cart[i];
+    if(found){ if(found.qty < 20) found.qty++; }
+    else cart.push({ id: id, name: add.getAttribute('data-dish'),
+                     cents: parseInt(add.getAttribute('data-price'), 10) || 0, qty: 1 });
+    save(); draw();
+    add.setAttribute('data-in', '');
+  });
+
+  document.getElementById('ord-open').onclick = function(){ sheet.hidden = false; draw(); };
+  document.getElementById('ord-close').onclick = function(){ sheet.hidden = true; };
+  tableEl.addEventListener('input', draw);
+
+  sendBtn.onclick = function(){
+    sendBtn.disabled = true;
+    post('/order', { table: tableEl.value, lines: cart.map(function(l){
+      return { menu_item_id: l.id, qty: l.qty, name: l.name };
+    }) })
+      .then(function(r){ return r.json().then(function(b){ return { ok: r.ok, body: b }; }); })
+      .then(function(res){
+        if(!res.ok){
+          // The server names the dish that went off the menu; showing anything vaguer
+          // leaves the diner re-sending the same doomed order.
+          status(res.body.error || 'That did not go through. Try again.', false);
+          draw();
+          return;
+        }
+        liveId = res.body.id; save(); watch(); draw();
+      })
+      .catch(function(){ status('No signal. Your order has not been sent.', false); draw(); });
+  };
+
+  cancelBtn.onclick = function(){
+    fetch('/api/public/' + encodeURIComponent(slug) + '/order/' + liveId, { method: 'DELETE' })
+      .then(function(r){
+        if(r.ok){ liveId = null; save(); stateEl.hidden = true; cancelBtn.hidden = true; }
+        else status('The kitchen already has that one.', false);
+        draw();
+      })
+      .catch(function(){});
+  };
+
+  load(); draw(); watch();
 })();
+`: ''}
+})();
+
 </script>
 </body>
 </html>`;

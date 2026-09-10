@@ -493,6 +493,18 @@ const api = (token) => async (method, path, body) => {
     check('once the kitchen has it, the diner cannot cancel', cancel.status === 404, `got ${cancel.status}`);
   }
 
+  // The ordering page carries a cart the base page does not, so it gets its own budget --
+  // and the base page keeps the 34KB one above, unchanged. Two ratchets, both enforced,
+  // because the whole point of gating the cart on the tier is that the thousands of
+  // restaurants without it must not pay a byte for it. The check below is what proves that
+  // claim rather than trusting it: if the cart ever leaks into the base render, the 34KB
+  // assertion earlier in this file fails first.
+  const orderPage = await fetch(`${BASE}/${slug}`).then((res) => res.text());
+  const orderWire = zlib.gzipSync(orderPage).length;
+  check('ordering page carries the cart', orderPage.includes('id="ord-bar"'));
+  check('ordering page under 42KB on the wire', orderWire < 42000,
+    `${orderWire} gzipped, ${orderPage.length} raw`);
+
   // Switching waiter calls off must take ordering with it -- see routes/admin.js.
   await call('PATCH', `/api/admin/restaurants/${restaurantId}`, { serviceRequests: false });
   const both = await db.from('restaurants').select('ordering_enabled').eq('id', restaurantId).single();
